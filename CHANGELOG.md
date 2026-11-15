@@ -16,6 +16,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   inside the OMEMO message; received files are authenticated before they are kept.
 - OMEMO keys and sessions are stored in `~/.local/share/jaba-da-hat/omemo/` (mode 0600).
 
+- Contacts window → ⋮ → **Blocked contacts**: see who is blocked (XEP-0191, kept in sync with the
+  server) and unblock several at once.
+- Suspend / resume and network changes: the app logs off cleanly before the system sleeps
+  (logind delay lock, at most 3 s), reconnects right after resume or when the network comes
+  back, and checks a seemingly live connection with a 10 s ping after a network switch.
+
+- `tools/package-check.sh`: runs the built binary on a simulated brand-new account (empty HOME,
+  no session bus) and checks first-start registration, autostart, file permissions, re-registration
+  over older / newer versions, `--unregister` and `--register`.
+
+### Fixed
+- On a new account the app did not start at login until Settings were saved once: the first
+  start now also creates the autostart entry (start at login is on by default).
+
 ### Changed
 - The lock button means "encrypt": it starts on (setting) before the contact's devices are
   known, and when encryption is impossible the message or file is **not sent** — it is never

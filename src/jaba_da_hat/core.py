@@ -27,9 +27,11 @@ class AppController(QObject):
     settingsChanged = Signal()
     themeChanged = Signal()
     unreadChanged = Signal()
+    blockedChanged = Signal()
     # tray hooks
     notify = Signal(str, str, str, str)  # title, body, jid ("" = not a chat), kind: message | file | note
     activityChanged = Signal()  # file offers / transfers changed (tray icon)
+    readyToSleep = Signal()  # offline after a suspend request: the system may sleep now
 
     def __init__(self, backend: Backend, settings: config.Settings, settings_path: Path | None = None,
                  engine: QQmlApplicationEngine | None = None, parent=None):
@@ -41,6 +43,7 @@ class AppController(QObject):
         self._presence = "available"  # desired presence while online
         self._wanted_online = False
         self._reconnect_attempt = 0
+        self._asleep = False
         self.roster = RosterModel(self)
         self.roster.set_local_groups(settings.local_groups)
         self.notifications = NotificationModel(self)
@@ -51,6 +54,7 @@ class AppController(QObject):
         self.engine = engine
         self._components: dict[str, QQmlComponent] = {}
         self._system_dark = False
+        self._blocked: list[str] = []
 
         b = backend
         b.stateChanged.connect(self._on_state)
@@ -67,6 +71,7 @@ class AppController(QObject):
         b.trustRequested.connect(self._on_trust_requested)
         b.chatStateReceived.connect(self._on_chat_state)
         b.subscriptionRequested.connect(self._on_subscription)
+        b.blockListChanged.connect(self._on_block_list)
         b.fileOffered.connect(self._on_file_offer)
         b.transferProgress.connect(self._on_transfer_progress)
         b.transferStateChanged.connect(self._on_transfer_state)
@@ -85,6 +90,7 @@ class AppController(QObject):
     notificationModel = Property(QObject, lambda s: s.notifications, constant=True)
     totalUnread = Property(int, lambda s: s.roster.total_unread(), notify=unreadChanged)
     groups = Property(list, lambda s: s.roster.groups(), notify=unreadChanged)
+    blockedJids = Property(list, lambda s: s._blocked, notify=blockedChanged)
 
     def _dark(self) -> bool:
         t = self.settings.theme
@@ -190,7 +196,9 @@ class AppController(QObject):
             self.roster.set_all_offline()
             for s in self.sessions.values():
                 s.set_remote_typing(False)
-            if self._wanted_online and self.settings.auto_reconnect:
+            if self._asleep:
+                self.readyToSleep.emit()
+            elif self._wanted_online and self.settings.auto_reconnect:
                 self._schedule_reconnect(announce=was == "online")
         self.stateChanged.emit()
         self.presenceChanged.emit()
@@ -203,6 +211,31 @@ class AppController(QObject):
             self.notifications.add("error", "Disconnected — reconnecting…")
         QTimer.singleShot(delay * 1000, lambda: self._wanted_online and self.connection_state == "offline"
                           and self.backend.login(self.settings))
+
+    # ---- suspend / network (sysevents.SystemEvents) — see docs/comments-details.md [23]
+    def on_sleep(self, going: bool) -> None:
+        if going:
+            self._asleep = True
+            if self.connection_state == "offline":
+                self.readyToSleep.emit()
+            else:
+                self.backend.logout()  # say goodbye; still "wanted online", so resume logs in again
+            return
+        self._asleep = False
+        if self._wanted_online and self.connection_state == "offline":
+            self._reconnect_now()
+
+    def on_network(self, up: bool) -> None:
+        if not up or self._asleep or not self._wanted_online:
+            return
+        if self.connection_state == "offline":
+            self._reconnect_now()
+        elif self.connection_state == "online":
+            self.backend.check_connection()
+
+    def _reconnect_now(self) -> None:
+        self._reconnect_attempt = 0
+        self.backend.login(self.settings)
 
     def mark_history_seen(self) -> None:
         """Remember that everything until now was received live; the next login fetches only newer history — see docs/comments-details.md [17]."""
@@ -257,6 +290,14 @@ class AppController(QObject):
         for jid in jids:
             self.backend.block_contact(jid)
             self.backend.remove_contact(jid)
+
+    def _on_block_list(self, jids: list) -> None:
+        self._blocked = sorted(jids)
+        self.blockedChanged.emit()
+
+    @Slot(list)
+    def unblock(self, jids: list) -> None:
+        self.backend.unblock_contacts([str(j) for j in jids])
 
     @Slot(str)
     def addGroup(self, name: str) -> None:  # noqa: N802

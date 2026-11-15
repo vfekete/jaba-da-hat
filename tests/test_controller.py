@@ -280,3 +280,67 @@ def test_transfer_info_updates_size_and_pausability(ctl):
     assert t.size == 2048 and not t.canPause and t.sizeText != "size unknown"
     ctl.backend.transferProgress.emit("link1", 1024)
     assert t.progress == 0.5
+
+
+def test_block_list_and_unblock(ctl):
+    ctl.login()
+    ctl.removeAndBlock(["bob@example.org"])
+    assert ctl.blockedJids == ["bob@example.org"]
+    ctl.unblock(["bob@example.org"])
+    assert ctl.blockedJids == [] and ("unblock", ["bob@example.org"]) in ctl.backend.sent
+
+
+def test_sleep_goes_offline_and_resume_reconnects(ctl, monkeypatch):
+    from jaba_da_hat import core
+
+    timers = []
+    monkeypatch.setattr(core.QTimer, "singleShot", lambda ms, fn: timers.append(ms))
+    ready = []
+    ctl.readyToSleep.connect(lambda: ready.append(True))
+    ctl.login()
+    ctl.on_sleep(True)
+    assert ctl.connection_state == "offline" and ready == [True]
+    assert timers == [] and not any("reconnecting" in n["text"] for n in ctl.notifications._rows)
+    ctl.on_network(True)  # network events while asleep are ignored
+    assert ctl.connection_state == "offline"
+    ctl.on_sleep(False)
+    assert ctl.connection_state == "online"
+
+
+def test_network_back_reconnects_now_or_checks_live_connection(ctl, monkeypatch):
+    from jaba_da_hat import core
+
+    monkeypatch.setattr(core.QTimer, "singleShot", lambda ms, fn: None)
+    checks = []
+    ctl.backend.check_connection = lambda: checks.append(True)
+    ctl.login()
+    ctl.on_network(True)
+    assert checks == [True]  # online: verify the old connection instead of tearing it down
+    ctl.backend.simulate_connection_drop()
+    ctl.on_network(True)
+    assert ctl.connection_state == "online"  # offline: reconnected at once, not after the back-off
+    ctl.logout()
+    ctl.on_network(True)
+    assert ctl.connection_state == "offline"  # logged off by the user: stays off
+
+
+def test_system_events_parse_logind_and_networkmanager(qapp):
+    from jeepney import DBusAddress, new_signal
+
+    from jaba_da_hat.sysevents import LOGIND, NM, SystemEvents
+
+    ev = SystemEvents()
+    got = []
+    ev.sleeping.connect(lambda b: got.append(("sleep", b)))
+    ev.networkChanged.connect(lambda b: got.append(("net", b)))
+
+    def sig(addr, member, signature, body):
+        return new_signal(DBusAddress(addr.object_path, interface=addr.interface), member, signature, body)
+
+    ev.dispatch(sig(LOGIND, "PrepareForSleep", "b", (True,)))
+    ev.dispatch(sig(LOGIND, "PrepareForSleep", "b", (False,)))
+    ev.dispatch(sig(NM, "StateChanged", "u", (70,)))  # first state: just remembered
+    ev.dispatch(sig(NM, "StateChanged", "u", (20,)))
+    ev.dispatch(sig(NM, "StateChanged", "u", (40,)))  # connecting: still down, no repeat
+    ev.dispatch(sig(NM, "StateChanged", "u", (70,)))
+    assert got == [("sleep", True), ("sleep", False), ("net", False), ("net", True)]

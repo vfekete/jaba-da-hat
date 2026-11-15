@@ -85,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
         result = autostart.refresh_registration()
         if result == "registered":
             log.info("registered %s %s for this user", APP_NAME, __version__)
+            from jaba_da_hat import config
+
+            if config.load(args.config).start_at_login:  # first start: "start at login" is on by default
+                autostart.set_enabled(True)
         elif result == "updated":
             if installed == __version__:
                 log.info("registration of %s refreshed (launcher entry was out of date)", __version__)
@@ -144,6 +148,14 @@ def main(argv: list[str] | None = None) -> int:
 
     tray = Tray(ctl)
 
+    from jaba_da_hat.sysevents import SystemEvents
+
+    sysevents = SystemEvents()
+    sysevents.sleeping.connect(ctl.on_sleep)
+    sysevents.networkChanged.connect(ctl.on_network)
+    ctl.readyToSleep.connect(sysevents.release_sleep)
+    sysevents.start()
+
     def on_peer():
         sock = server.nextPendingConnection()
         sock.waitForReadyRead(300)
@@ -168,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     qapp.aboutToQuit.connect(ctl.shutdown)
     qapp.aboutToQuit.connect(tray.close_toast)
     qapp.aboutToQuit.connect(tray.hide)
+    qapp.aboutToQuit.connect(sysevents.stop)
 
     if args.open:
         {"contacts": ctl.openContacts, "settings": ctl.openSettings,

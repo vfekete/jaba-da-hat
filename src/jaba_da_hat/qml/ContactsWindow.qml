@@ -60,6 +60,7 @@ ApplicationWindow {
                     MenuItem { text: qsTr("Remove && block selected (%1)").arg(win.selectedCount); enabled: win.selectedCount > 0 && app.connectionState === "online"; onTriggered: removeDialog.openFor(true) }
                     MenuSeparator {}
                     MenuItem { text: qsTr("Remove groups…"); enabled: app.groups.length > 0; onTriggered: removeGroupsDialog.open() }
+                    MenuItem { text: qsTr("Blocked contacts (%1)…").arg(app.blockedJids.length); onTriggered: blockedDialog.open() }
                     MenuSeparator {}
                     MenuItem { text: qsTr("Clear selection"); enabled: win.selectedCount > 0; onTriggered: win.clearSelection() }
                 }
@@ -424,6 +425,53 @@ ApplicationWindow {
                    ? qsTr("Remove and block %n contact(s)? They will no longer be able to message you or see your presence.", "", removeDialog.jids.length)
                    : qsTr("Remove %n contact(s) from your roster?", "", removeDialog.jids.length))
                   + "\n\n" + removeDialog.jids.join("\n")
+        }
+    }
+
+    Dialog {
+        id: blockedDialog
+        property var chosen: ({})
+        anchors.centerIn: parent
+        width: Math.min(380, win.width - 32)
+        height: Math.min(460, win.height - 40)
+        modal: true
+        title: qsTr("Blocked contacts")
+        onOpened: chosen = ({})
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("Unblock selected")
+                enabled: Object.keys(blockedDialog.chosen).length > 0 && app.connectionState === "online"
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            Button { text: qsTr("Close"); flat: true; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+        }
+        onAccepted: app.unblock(Object.keys(chosen))
+        ColumnLayout {
+            anchors.fill: parent
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                opacity: 0.7
+                font.pixelSize: 12
+                text: app.blockedJids.length === 0 ? qsTr("Nobody is blocked.")
+                      : qsTr("Blocked people can't message you or see your presence. Unblocking doesn't add them back to your contacts.")
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: app.blockedJids
+                delegate: CheckBox {
+                    required property string modelData
+                    text: modelData
+                    checked: blockedDialog.chosen[modelData] === true
+                    onToggled: {
+                        let c = Object.assign({}, blockedDialog.chosen)
+                        if (checked) c[modelData] = true; else delete c[modelData]
+                        blockedDialog.chosen = c
+                    }
+                }
+            }
         }
     }
 

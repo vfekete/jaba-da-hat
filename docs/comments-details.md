@@ -388,6 +388,32 @@ uploads nothing. Receiving downloads the ciphertext (resumable), then decrypts
 and checks the GCM tag in a worker thread; an altered file is deleted, not
 kept.
 
+## src/jaba_da_hat/sysevents.py
+
+### [23] Suspend and network changes: go offline cleanly, come back at once
+
+Without help, a laptop that sleeps keeps "online" on the server until the TCP
+connection times out there (contacts see us online for minutes), and after
+resume we notice the dead connection only when the keepalive ping
+(XEP-0199: every 120 s, 30 s timeout) fails, then wait for the reconnect
+back-off. Both are fixed through the system D-Bus (jeepney, already used for
+the tray):
+
+- systemd-logind `PrepareForSleep(true)`: we hold a *delay* inhibitor lock
+  while awake, so logind waits until we have logged off (unavailable presence,
+  stream closed, `history_since` saved) and released the lock. The lock is
+  released after at most 3 s even if the server doesn't answer, so we never
+  block suspend for long. `PrepareForSleep(false)` (resume): we take a new
+  lock and log in right away, without the back-off.
+- NetworkManager `StateChanged`: when connectivity comes back (state ≥ 60)
+  and we want to be online, an offline client reconnects immediately. A
+  client that still thinks it is online gets a ping with a 10 s timeout: after
+  a network switch the old TCP connection is usually dead without either side
+  noticing; if the ping fails the connection is dropped and re-established.
+
+The user's choice still rules: after Log off, neither event logs back in.
+Without a system bus (containers, tests) the app simply doesn't react.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

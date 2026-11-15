@@ -139,3 +139,20 @@ def test_chat_window_trust_dialog(ui, qml_messages):
     win.close()
     wait_until(lambda: "bob@example.org" not in ui.windows, 1000)
     assert qml_messages == []
+
+
+def test_blocked_contacts_dialog(ui, qml_messages):
+    from PySide6.QtCore import QObject
+
+    from conftest import wait_until
+
+    ui.removeAndBlock(["bob@example.org"])
+    ui.openContacts()
+    win = ui._singletons["contacts"]
+    dialog = next(o for o in win.findChildren(QObject) if o.property("title") == "Blocked contacts")
+    dialog.setProperty("visible", True)
+    wait_until(lambda: False, 200)
+    dialog.setProperty("chosen", {"bob@example.org": True})
+    dialog.accept()
+    assert wait_until(lambda: ui.blockedJids == [], 1000)
+    assert qml_messages == []

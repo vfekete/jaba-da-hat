@@ -97,6 +97,7 @@ uv sync                                                    # create / update .ve
 uv run pytest                                              # tests (Qt runs offscreen)
 JDH_XMPP_TEST=1 uv run pytest tests/test_xmpp_integration.py  # against Prosody (needs docker)
 tools/audit.sh                                             # known CVEs in any dependency (build.sh runs it too)
+tools/package-check.sh                                     # built binary on a simulated new account
 QT_QPA_PLATFORM=offscreen uv run python tools/screenshots.py   # refresh README screenshots
 QT_QPA_PLATFORM=offscreen uv run python tools/gen_icons.py     # rescale icons from assets/app-icon.png
 ```

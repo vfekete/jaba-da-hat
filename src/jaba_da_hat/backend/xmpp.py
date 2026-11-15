@@ -35,6 +35,7 @@ SHOW = {"available": "", "away": "away", "dnd": "dnd", "xa": "xa"}
 PRESENCE = {"": "available", "chat": "available", "away": "away", "dnd": "dnd", "xa": "xa"}
 # Which resource represents a contact when priorities are equal: the most reachable one.
 _REACHABLE = ("available", "dnd", "away", "xa")
+PING_CHECK_S = 10  # after a network change, a live connection must answer a ping within this
 MAM_PAGE = 50
 MAM_LIMIT = 500  # never pull more than this many archived messages at login
 UPLOAD_NS = "urn:xmpp:http:upload:0"  # XEP-0363
@@ -181,6 +182,24 @@ class XmppBackend(Backend):
         if self._client is not None and self._client.is_connected():
             self._client.send_presence(pshow=SHOW.get(presence, ""), pstatus=status or None)
 
+    def check_connection(self) -> None:
+        def run():
+            c = self._client
+            if c is None or not c.is_connected():
+                return
+
+            async def ping():
+                try:
+                    await c.plugin["xep_0199"].ping(timeout=PING_CHECK_S)
+                except Exception as exc:  # noqa: BLE001 — no answer: the old TCP connection is dead
+                    log.info("connection check failed (%s); reconnecting", _describe(exc))
+                    if c is self._client:
+                        c.abort()  # → disconnected → offline → the controller reconnects
+
+            asyncio.ensure_future(ping())
+
+        self._call(run)
+
     def shutdown(self, timeout: float = 3.0) -> None:
         """Close the connection (waiting up to *timeout* s for the goodbye) and stop the loop thread."""
         self._http.abort_all()
@@ -324,7 +343,17 @@ class XmppBackend(Backend):
     def _block(self, jid: str) -> None:
         c = self._online_client(f"Cannot block {jid}: you are offline.")
         if c is not None:
-            self._spawn(c.plugin["xep_0191"].block([jid]), f"Blocking {jid} failed")
+            self._spawn(c.plugin["xep_0191"].block([jid]), f"Blocking {jid} failed")  # the server pushes the new list
+
+    def unblock_contacts(self, jids: list[str]) -> None:
+        jids = list(jids)
+
+        def run():
+            c = self._online_client("Cannot unblock: you are offline.")
+            if c is not None and jids:
+                self._spawn(c.plugin["xep_0191"].unblock(jids), "Unblocking failed")
+
+        self._call(run)
 
     def answer_subscription(self, jid: str, accept: bool) -> None:
         self._call(self._answer_subscription, jid, accept)
@@ -639,6 +668,8 @@ def _make_client_class():
             on("carbon_received", lambda m: self._on_message(m["carbon_received"]))
             on("carbon_sent", self._on_carbon_sent)
             on("chatstate", self._on_chat_state)
+            on("blocked", lambda iq: self._on_block_push(iq, "block"))
+            on("unblocked", lambda iq: self._on_block_push(iq, "unblock"))
 
         # ---- helpers --------------------------------------------------
         @property
@@ -716,11 +747,33 @@ def _make_client_class():
             presence, status = self.backend._presence
             self.send_presence(pshow=SHOW.get(presence, ""), pstatus=status or None)
             self._state("online")
+            await self._load_block_list()
             try:
                 await self.plugin["xep_0280"].enable()  # copies of chats from my other devices (XEP-0280)
             except Exception as exc:  # noqa: BLE001
                 log.info("message carbons unavailable: %s", _describe(exc))
             await self._fetch_history()
+
+        # ---- blocking (XEP-0191) ---------------------------------------
+        async def _load_block_list(self) -> None:
+            try:
+                self._blocked = {str(j) for j in await self.plugin["xep_0191"].get_blocked_jids(timeout=15)}
+            except Exception as exc:  # noqa: BLE001
+                log.info("block list unavailable: %s", _describe(exc))
+                self._blocked = set()
+            self.backend._emit(self.backend.blockListChanged, sorted(self._blocked))
+
+        def _on_block_push(self, iq, kind: str) -> None:
+            el = iq.xml.find(f"{{urn:xmpp:blocking}}{kind}")
+            items = {i.get("jid", "") for i in el.findall("{urn:xmpp:blocking}item")} if el is not None else set()
+            items.discard("")
+            blocked = getattr(self, "_blocked", set())
+            if kind == "block":
+                blocked |= items
+            else:
+                blocked = blocked - items if items else set()  # an empty <unblock/> means "everyone"
+            self._blocked = blocked
+            self.backend._emit(self.backend.blockListChanged, sorted(blocked))
 
         # ---- roster ---------------------------------------------------
         def _roster_items(self) -> list[dict]:

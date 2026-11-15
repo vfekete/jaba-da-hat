@@ -37,7 +37,7 @@ class Recorder:
         self.events: list[tuple] = []
         for name in ("stateChanged", "error", "loginRejected", "rosterReceived", "contactUpdated", "contactRemoved",
                      "presenceReceived", "messageReceived", "messageSentElsewhere", "chatStateReceived", "subscriptionRequested", "fileOffered", "transferProgress",
-                     "transferStateChanged", "transferInfo", "notice", "encryptionAvailable", "trustRequested"):
+                     "transferStateChanged", "transferInfo", "notice", "encryptionAvailable", "trustRequested", "blockListChanged"):
             getattr(backend, name).connect(lambda *a, n=name: self._on(n, a))
 
     def _on(self, name, args):
@@ -191,6 +191,11 @@ def test_block(pair):
     bob.send_message("me@localhost", "spam", False)
     wait_until(lambda: False, 1500)
     assert ("bob@localhost", "spam", False) not in mr.of("messageReceived")
+    mr.wait(lambda: mr.of("blockListChanged") and mr.of("blockListChanged")[-1][0] == ["bob@localhost"])
+    me.unblock_contacts(["bob@localhost"])
+    mr.wait(lambda: mr.of("blockListChanged")[-1][0] == [])
+    bob.send_message("me@localhost", "hello again", False)
+    mr.wait(lambda: ("bob@localhost", "hello again", False) in mr.of("messageReceived"))
     assert not mr.of("error"), mr.of("error")
 
 
@@ -558,3 +563,18 @@ def test_encrypted_chat_never_uses_jingle_or_plain_upload(me_alice, tmp_path):
     mr.wait(lambda: "failed" in _states(mr, "e2"))
     detail = [e[2] for e in mr.of("transferStateChanged") if e[0] == "e2" and e[1] == "failed"][0]
     assert "no OMEMO devices" in detail
+
+
+def test_connection_check_detects_dead_connection(pair):
+    me, ms, mr = pair("me")
+    online(me, ms, mr)
+    me.check_connection()  # healthy: nothing happens
+    wait_until(lambda: False, 1500)
+    assert mr.state == "online"
+    subprocess.run(["docker", "pause", "jdh-prosody"], check=True, capture_output=True)
+    try:
+        me.check_connection()
+        mr.wait(lambda: mr.state == "offline", 15000)  # PING_CHECK_S, not the ~150 s keepalive
+    finally:
+        subprocess.run(["docker", "unpause", "jdh-prosody"], check=True, capture_output=True)
+    online(me, ms, mr)

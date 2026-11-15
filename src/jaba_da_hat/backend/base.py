@@ -32,6 +32,7 @@ class Backend(QObject):
     trustRequested = Signal(str, str, dict)
     chatStateReceived = Signal(str, str)  # jid, "composing" | "paused" | "active" | "gone"
     subscriptionRequested = Signal(str, str)  # jid, optional message
+    blockListChanged = Signal(list)  # bare JIDs blocked on the server (XEP-0191), full list each time
     # File transfer
     fileOffered = Signal(str, str, str, int)  # tid, jid, file name, size
     transferProgress = Signal(str, int)  # tid, bytes done
@@ -49,6 +50,9 @@ class Backend(QObject):
 
     def set_presence(self, presence: str, status: str = "") -> None:
         raise NotImplementedError
+
+    def check_connection(self) -> None:
+        """The network changed under a live connection: verify it quickly, drop it if it is dead."""
 
     def shutdown(self, timeout: float = 3.0) -> None:
         """Called once when the application exits, after ``logout``; may block up to *timeout* s."""
@@ -80,6 +84,9 @@ class Backend(QObject):
         raise NotImplementedError
 
     def block_contact(self, jid: str) -> None:
+        raise NotImplementedError
+
+    def unblock_contacts(self, jids: list[str]) -> None:
         raise NotImplementedError
 
     def set_contact_groups(self, jid: str, name: str, groups: list[str]) -> None:

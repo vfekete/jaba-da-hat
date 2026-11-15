@@ -187,6 +187,12 @@ class MockBackend(Backend):
     def block_contact(self, jid: str) -> None:
         self.sent.append(("block", jid))
         self.blocked.add(jid)
+        self.blockListChanged.emit(sorted(self.blocked))
+
+    def unblock_contacts(self, jids: list[str]) -> None:
+        self.sent.append(("unblock", list(jids)))
+        self.blocked -= set(jids)
+        self.blockListChanged.emit(sorted(self.blocked))
 
     def set_contact_groups(self, jid: str, name: str, groups: list[str]) -> None:
         self.sent.append(("roster-set", jid, name, list(groups)))
