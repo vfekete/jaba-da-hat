@@ -5,7 +5,7 @@
 A Jabber/XMPP-only instant messenger for GNOME that lives in the system tray.
 No other protocols, no plugins: just XMPP done properly.
 
-> **Status: 0.2.0 in progress.** Connects to real XMPP servers (login, contacts, presence,
+> **Status: 0.2.0.** Connects to real XMPP servers (login, contacts, presence,
 > subscriptions, messages, typing, server history). File transfer arrives in 0.3.0 and
 > OMEMO encryption in 0.4.0; until then they work only with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
 
@@ -64,9 +64,9 @@ instance with another `--config` file can log in as `alice@localhost` to chat wi
 ## Build a single binary
 
 ```bash
-./build.sh                  # → build/jdh-<version>, e.g. build/jdh-0.1.0
-./build/jdh-0.1.0 --register     # register for your user: launcher (.desktop) + icon
-./build/jdh-0.1.0 --unregister   # remove launcher, autostart entry and icon
+./build.sh                  # → build/jdh-<version>, e.g. build/jdh-0.2.0
+./build/jdh-0.2.0 --register     # register for your user: launcher (.desktop) + icon
+./build/jdh-0.2.0 --unregister   # remove launcher, autostart entry and icon
 ```
 
 At every start the binary checks the registration: if the app is not registered it registers
