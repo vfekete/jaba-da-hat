@@ -24,6 +24,9 @@ ls "$PKG"/qml/*.qml >/dev/null
 # 3. build-only dependencies live in their own group, inside the project venv
 uv sync --quiet --group build
 
+# 3b. never ship a binary with a dependency that has a known vulnerability
+tools/audit.sh || { echo "known vulnerabilities in dependencies — update them (uv lock --upgrade-package …)" >&2; exit 1; }
+
 # 4. regenerate the scaled icons bundled with the package
 QT_QPA_PLATFORM=offscreen uv run --quiet python tools/gen_icons.py >/dev/null
 

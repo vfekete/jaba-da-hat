@@ -299,6 +299,45 @@ the file over. Uploads cannot be paused: an XEP-0363 slot is a single PUT, so
 the Pause button is hidden for them (`can_pause: False`) and only Cancel is
 offered.
 
+## src/jaba_da_hat/backend/jingle.py
+
+### [21] Jingle file transfer: routing, transports, pause and resume
+
+**Routing.** Sending asks each online resource of the contact (highest
+priority first) for disco#info. If one advertises Jingle, Jingle FT 5 and the
+IBB transport, the file is offered to that resource over Jingle, as decided
+("Jingle preferred"). Otherwise (no such client, contact offline, or the offer
+refused) it goes through HTTP Upload, which also reaches an offline contact.
+
+**Only IBB.** In-Band Bytestreams run through the server, so they work behind
+any NAT or firewall without extra setup. SOCKS5 (XEP-0260) would be faster but
+needs reachable candidates or a proxy; it is not implemented, so we don't
+advertise it. Many clients still offer SOCKS5 first. Then we accept with an
+empty SOCKS5 transport and report `candidate-error`; per XEP-0260 the sender
+falls back with `transport-replace` to IBB, which we accept. Up to `WINDOW`
+IBB blocks are in flight at once, so throughput is not limited to one block per
+round trip.
+
+**Integrity.** The sender hashes the file (SHA-256) before offering it and puts
+the hash into the offer. The receiver hashes while writing, also over an
+existing `.part` when resuming, and deletes the file if the hash differs.
+Nothing unverified is renamed from `.part` to its real name.
+
+**Pause.** Jingle has no pause, so each side does what is possible:
+
+- sender: stops sending blocks; the session stays open and Resume continues.
+  The receiver just sees a stall.
+- receiver: ends the session (`<cancel/>` with the text `paused`, so our own
+  sender shows "Paused by the contact" instead of "cancelled") and keeps the
+  `.part`. Resume sends a new session-initiate *requesting* the file
+  (XEP-0234 §6.2) with `<range offset=…>` (§6.4). Our sender keeps every file
+  it offered while the card exists and answers such a request from the same
+  contact for the same hash. Other clients usually can't, so the card then says
+  to ask for the file again; the `.part` stays until the card is cancelled.
+
+The same request path resumes a download after the connection broke. A send
+that failed is resumed by offering the file again.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

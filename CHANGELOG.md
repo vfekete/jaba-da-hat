@@ -15,6 +15,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   and cancelled; uploads can be cancelled (HTTP Upload has no pause, so the button is hidden).
 - Clear errors when the server has no upload service or the file exceeds its size limit.
 - Test server: HTTP Upload component on `https://localhost:15281`.
+- **Jingle file transfer** (XEP-0166 / XEP-0234 over In-Band Bytestreams, XEP-0261 / XEP-0047),
+  written for this app (slixmpp has only the stanza definitions). Used when the contact's
+  client supports it; otherwise, or when the contact is offline, HTTP Upload is used.
+  Every received file is checked against the sender's SHA-256 before it is kept.
+  Offers that propose SOCKS5 fall back to IBB the standard way (`candidate-error`).
+- Jingle pause / resume: the sender pauses by holding back data; the receiver pauses by ending
+  the session and resumes by requesting the rest of the file with a byte range. Cancel and
+  decline reach the other side.
+- `tools/audit.sh`: checks every locked dependency for known vulnerabilities (OSV + PyPI);
+  `build.sh` refuses to build when one is found. Current result: none.
 
 ## [0.2.0] — 2026-11-15
 

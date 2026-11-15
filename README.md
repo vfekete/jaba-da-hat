@@ -6,9 +6,9 @@ A Jabber/XMPP-only instant messenger for GNOME that lives in the system tray.
 No other protocols, no plugins: just XMPP done properly.
 
 > **Status: 0.2.0.** Connects to real XMPP servers (login, contacts, presence,
-> subscriptions, messages, typing, server history) and sends / receives files over HTTP Upload.
-> Direct file transfer (Jingle) is next; OMEMO encryption arrives in 0.4.0 and until then works
-> only with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
+> subscriptions, messages, typing, server history) and transfers files over Jingle or HTTP
+> Upload, with pause / resume. OMEMO encryption arrives in 0.4.0 and until then works only
+> with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Features
 
@@ -95,6 +95,7 @@ Received files go to `~/Downloads` unless changed in Settings.
 uv sync                                                    # create / update .venv
 uv run pytest                                              # tests (Qt runs offscreen)
 JDH_XMPP_TEST=1 uv run pytest tests/test_xmpp_integration.py  # against Prosody (needs docker)
+tools/audit.sh                                             # known CVEs in any dependency (build.sh runs it too)
 QT_QPA_PLATFORM=offscreen uv run python tools/screenshots.py   # refresh README screenshots
 QT_QPA_PLATFORM=offscreen uv run python tools/gen_icons.py     # rescale icons from assets/app-icon.png
 ```

@@ -1,6 +1,6 @@
 # jaba-da-hat — plan and XMPP feasibility
 
-Status: **0.3.0 in progress — HTTP Upload / link download done; Jingle FT next.** OMEMO (0.4.0) still runs only on the mock backend.
+Status: **0.3.0 implemented — HTTP Upload, link download and Jingle FT over IBB; waiting for your manual test.** OMEMO (0.4.0) still runs only on the mock backend.
 
 Decisions made so far (2026-11-15):
 

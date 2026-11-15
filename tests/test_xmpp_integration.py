@@ -225,6 +225,7 @@ def test_http_upload_and_download_with_resume(pair, tmp_path):
     src = tmp_path / "holiday photo.jpg"
     src.write_bytes(data)
 
+    al.use_jingle = False
     al.send_file("t1", "me@localhost", str(src))
     ar.wait(lambda: "completed" in _states(ar, "t1") or "failed" in _states(ar, "t1"))
     assert _states(ar, "t1")[-1] == "completed", ar.of("transferStateChanged")
@@ -276,6 +277,7 @@ def test_cancel_download(pair, tmp_path):
     online(al, as_, ar)
     src = tmp_path / "a.bin"
     src.write_bytes(os.urandom(50_000))
+    al.use_jingle = False
     al.send_file("t3", "me@localhost", str(src))
     mr.wait(lambda: mr.of("fileOffered"))
     tid = mr.of("fileOffered")[0][0]
@@ -319,3 +321,129 @@ def test_file_through_two_controllers(qapp, server, tmp_path):
         for c in ctls:
             c.shutdown()
             c.backend.shutdown()
+
+
+
+# ---------------------------------------------------------------- Jingle file transfer
+
+def friends(a, ar, a_jid, b, br, b_jid):
+    """Make a and b mutual contacts (once per server) and wait until each sees the other online."""
+    if not any(c["jid"] == b_jid and c["subscription"] == "both" for c in ar.of("rosterReceived")[-1][0]):
+        a.add_contact(b_jid, "", [])
+        br.wait(lambda: any(e[0] == a_jid for e in br.of("subscriptionRequested")))
+        b.answer_subscription(a_jid, True)
+    ar.wait(lambda: any(e[0] == b_jid and e[1] != "offline" for e in ar.of("presenceReceived")))
+    br.wait(lambda: any(e[0] == a_jid and e[1] != "offline" for e in br.of("presenceReceived")))
+
+
+@pytest.fixture
+def me_alice(pair):
+    me, ms, mr = pair("me")
+    al, as_, ar = pair("alice")
+    online(me, ms, mr)
+    online(al, as_, ar)
+    friends(al, ar, "alice@localhost", me, mr, "me@localhost")
+    return me, mr, al, ar
+
+
+def _offer(mr, n=0):
+    mr.wait(lambda: len(mr.of("fileOffered")) > n)
+    return mr.of("fileOffered")[n]
+
+
+def test_jingle_transfer_with_checksum(me_alice, tmp_path):
+    me, mr, al, ar = me_alice
+    data = os.urandom(200_000)
+    src = tmp_path / "report.pdf"
+    src.write_bytes(data)
+    al.send_file("j1", "me@localhost", str(src))
+    tid, jid, name, size = _offer(mr)
+    assert tid.startswith("jingle-") and (jid, name, size) == ("alice@localhost", "report.pdf", 200_000)
+    assert ("j1", {"can_pause": True}) in ar.of("transferInfo")
+    dest = tmp_path / "dl" / "report.pdf"
+    me.accept_file(tid, str(dest))
+    mr.wait(lambda: _states(mr, tid)[-1:] in (["completed"], ["failed"]))
+    assert _states(mr, tid)[-1] == "completed", mr.of("transferStateChanged")
+    assert dest.read_bytes() == data
+    ar.wait(lambda: _states(ar, "j1")[-1:] == ["completed"])
+    assert not mr.of("error") and not ar.of("error")
+
+
+def test_jingle_decline(me_alice, tmp_path):
+    me, mr, al, ar = me_alice
+    src = tmp_path / "x.txt"
+    src.write_text("x")
+    al.send_file("j2", "me@localhost", str(src))
+    tid = _offer(mr)[0]
+    me.decline_file(tid)
+    ar.wait(lambda: "declined" in _states(ar, "j2"))
+    assert _states(mr, tid) == ["declined"]
+
+
+def test_jingle_sender_pause_resume(me_alice, tmp_path):
+    me, mr, al, ar = me_alice
+    data = os.urandom(3_000_000)
+    src = tmp_path / "big.bin"
+    src.write_bytes(data)
+    al.send_file("j3", "me@localhost", str(src))
+    tid = _offer(mr)[0]
+    me.accept_file(tid, str(tmp_path / "dl" / "big.bin"))
+    ar.wait(lambda: "active" in _states(ar, "j3"))
+    al.pause_transfer("j3")
+    ar.wait(lambda: "paused" in _states(ar, "j3"))
+    wait_until(lambda: False, 400)
+    got = [e[1] for e in mr.of("transferProgress") if e[0] == tid]
+    stalled = got[-1] if got else 0
+    wait_until(lambda: False, 600)
+    got = [e[1] for e in mr.of("transferProgress") if e[0] == tid]
+    assert (got[-1] if got else 0) == stalled < len(data)  # nothing moves while paused
+    al.resume_transfer("j3")
+    mr.wait(lambda: _states(mr, tid)[-1:] in (["completed"], ["failed"]), 20000)
+    assert _states(mr, tid)[-1] == "completed", mr.of("transferStateChanged")
+    assert (tmp_path / "dl" / "big.bin").read_bytes() == data
+
+
+def test_jingle_receiver_pause_resume_requests_the_rest(me_alice, tmp_path):
+    me, mr, al, ar = me_alice
+    data = os.urandom(3_000_000)
+    src = tmp_path / "video.mp4"
+    src.write_bytes(data)
+    al.send_file("j4", "me@localhost", str(src))
+    tid = _offer(mr)[0]
+    dest = tmp_path / "dl" / "video.mp4"
+    me.accept_file(tid, str(dest))
+    mr.wait(lambda: any(e[0] == tid and e[1] > 100_000 for e in mr.of("transferProgress")))
+    me.pause_transfer(tid)
+    mr.wait(lambda: "paused" in _states(mr, tid))
+    ar.wait(lambda: "paused" in _states(ar, "j4"))
+    part = tmp_path / "dl" / "video.mp4.part"
+    assert 0 < part.stat().st_size < len(data)
+    me.resume_transfer(tid)
+    mr.wait(lambda: _states(mr, tid)[-1:] in (["completed"], ["failed"]), 20000)
+    assert _states(mr, tid)[-1] == "completed", mr.of("transferStateChanged")
+    assert dest.read_bytes() == data  # checksum verified over the old part + the requested rest
+    ar.wait(lambda: _states(ar, "j4")[-1:] == ["completed"])
+
+
+def test_jingle_receiver_cancel(me_alice, tmp_path):
+    me, mr, al, ar = me_alice
+    src = tmp_path / "c.bin"
+    src.write_bytes(os.urandom(3_000_000))
+    al.send_file("j5", "me@localhost", str(src))
+    tid = _offer(mr)[0]
+    me.accept_file(tid, str(tmp_path / "dl" / "c.bin"))
+    mr.wait(lambda: any(e[0] == tid for e in mr.of("transferProgress")))
+    me.cancel_transfer(tid)
+    ar.wait(lambda: "cancelled" in _states(ar, "j5"))
+    assert not (tmp_path / "dl" / "c.bin.part").exists() and not (tmp_path / "dl" / "c.bin").exists()
+
+
+def test_offline_contact_gets_http_upload(pair, tmp_path):
+    al, as_, ar = pair("alice")
+    online(al, as_, ar)
+    src = tmp_path / "later.txt"
+    src.write_text("for when you're back")
+    al.send_file("j6", "bob@localhost", str(src))  # bob is not online: no Jingle partner
+    ar.wait(lambda: _states(ar, "j6")[-1:] in (["completed"], ["failed"]))
+    assert _states(ar, "j6")[-1] == "completed", ar.of("transferStateChanged")
+    assert ("j6", {"can_pause": False}) in ar.of("transferInfo")

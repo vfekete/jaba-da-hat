@@ -78,6 +78,7 @@ class XmppBackend(Backend):
         self._http = HttpFiles(self)
         self._files: dict[str, dict] = {}
         self._link_ids = itertools.count(1)
+        self.use_jingle = True  # False: always HTTP Upload (tests)
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, name="xmpp", daemon=True)
         self._thread.start()
@@ -303,8 +304,28 @@ class XmppBackend(Backend):
         self._files[tid] = {"kind": "in", "jid": jid, "url": url, "dest": "", "state": "offered"}
         self.fileOffered.emit(tid, jid, file_name_from_url(url), 0)
 
+    def _offer_jingle(self, tid: str, jid: str, name: str, size: int) -> None:
+        """Main thread: a contact offers a file over Jingle."""
+        self._files[tid] = {"kind": "jingle-in", "jid": jid, "state": "offered"}
+        self.fileOffered.emit(tid, jid, name, size)
+
+    def _jingle(self, method: str, tid: str, *args) -> None:
+        """Forward a user action on a Jingle transfer to the loop thread."""
+
+        def run():
+            c = self._client
+            if c is not None:
+                getattr(c.jingle, method)(tid, *args)
+            elif method in ("cancel", "decline"):
+                self._post.emit(lambda: self._file_state(tid, "cancelled" if method == "cancel" else "declined"))
+
+        self._call(run)
+
     def accept_file(self, tid: str, dest_path: str) -> None:
         f = self._files.get(tid)
+        if f is not None and f["kind"] == "jingle-in":
+            self._jingle("accept", tid, dest_path)
+            return
         if f is None or f["kind"] != "in":
             return
         f["dest"] = dest_path
@@ -325,26 +346,34 @@ class XmppBackend(Backend):
 
     def decline_file(self, tid: str) -> None:
         f = self._files.get(tid)
-        if f is not None and f["state"] == "offered":
+        if f is not None and f["kind"].startswith("jingle"):
+            self._jingle("decline", tid)
+        elif f is not None and f["state"] == "offered":
             self._file_state(tid, "declined")  # a shared link needs no answer to the sender
 
     def cancel_transfer(self, tid: str) -> None:
         f = self._files.get(tid)
         if f is None or f["state"] in ("completed", "cancelled", "declined"):
             return
-        if not self._http.abort(tid, "cancelled"):
+        if f["kind"].startswith("jingle"):
+            self._jingle("cancel", tid)
+        elif not self._http.abort(tid, "cancelled"):
             if f["kind"] == "in" and f["dest"]:
                 part_path(f["dest"]).unlink(missing_ok=True)
             self._file_state(tid, "cancelled")
 
     def pause_transfer(self, tid: str) -> None:
         f = self._files.get(tid)
-        if f is not None and f["kind"] == "in":
+        if f is not None and f["kind"].startswith("jingle"):
+            self._jingle("pause", tid)
+        elif f is not None and f["kind"] == "in":
             self._http.abort(tid, "paused")  # the .part file stays; resume continues with a Range request
 
     def resume_transfer(self, tid: str) -> None:
         f = self._files.get(tid)
-        if f is not None and f["kind"] == "in" and f["state"] in ("paused", "failed") and not self._http.busy(tid):
+        if f is not None and f["kind"].startswith("jingle"):
+            self._jingle("resume", tid)
+        elif f is not None and f["kind"] == "in" and f["state"] in ("paused", "failed") and not self._http.busy(tid):
             self._download(tid)
 
     def send_file(self, tid: str, jid: str, path: str) -> None:
@@ -355,26 +384,49 @@ class XmppBackend(Backend):
             return
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
         self._files[tid] = {"kind": "out", "jid": jid, "path": path, "size": size, "type": ctype, "state": "pending"}
-        self.transferInfo.emit(tid, {"can_pause": False})  # HTTP Upload cannot pause, only cancel
-        self._file_state(tid, "pending", "Asking the server for an upload slot…")
-        self._call(self._request_slot, tid, jid, os.path.basename(path), size, ctype)
+        self._file_state(tid, "pending", "Preparing…")
+        self._call(self._route_send, tid, jid, path, size, ctype)
 
-    def _request_slot(self, tid: str, jid: str, name: str, size: int, ctype: str) -> None:
+    def _set_kind(self, tid: str, kind: str, can_pause: bool) -> None:
+        f = self._files.get(tid)
+        if f is not None:
+            f["kind"] = kind
+        self.transferInfo.emit(tid, {"can_pause": can_pause})
+
+    def _route_send(self, tid: str, jid: str, path: str, size: int, ctype: str) -> None:
+        """Jingle when the contact's app supports it, else HTTP Upload — see docs/comments-details.md [21]."""
         c = self._client
         if c is None or not c.is_connected():
             self._post.emit(lambda: self._file_state(tid, "failed", "You are offline."))
             return
 
         async def run():
+            full = ""
             try:
-                put_url, headers, get_url = await c.request_upload_slot(name, size, ctype)
+                full = await c.jingle.jingle_resource(jid) if self.use_jingle else ""
             except Exception as exc:  # noqa: BLE001
-                why = str(exc) if isinstance(exc, UploadError) else _describe(exc)
-                self._post.emit(lambda: self._file_state(tid, "failed", why))
-                return
-            self._post.emit(lambda: self._upload(tid, put_url, headers, get_url))
+                log.debug("jingle discovery for %s: %s", jid, exc)
+            if full:
+                self._post.emit(lambda: self._set_kind(tid, "jingle", True))
+                try:
+                    await c.jingle.offer(tid, full, path, ctype)
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    log.info("jingle offer to %s refused (%s); using HTTP Upload", full, _describe(exc))
+            self._post.emit(lambda: self._set_kind(tid, "out", False))  # HTTP Upload cannot pause, only cancel
+            self._post.emit(lambda: self._file_state(tid, "pending", "Asking the server for an upload slot…"))
+            await self._request_slot(c, tid, os.path.basename(path), size, ctype)
 
         asyncio.ensure_future(run())
+
+    async def _request_slot(self, c, tid: str, name: str, size: int, ctype: str) -> None:
+        try:
+            put_url, headers, get_url = await c.request_upload_slot(name, size, ctype)
+        except Exception as exc:  # noqa: BLE001
+            why = str(exc) if isinstance(exc, UploadError) else _describe(exc)
+            self._post.emit(lambda: self._file_state(tid, "failed", why))
+            return
+        self._post.emit(lambda: self._upload(tid, put_url, headers, get_url))
 
     def _upload(self, tid: str, put_url: str, headers: dict, get_url: str) -> None:
         f = self._files.get(tid)
@@ -438,11 +490,14 @@ def _make_client_class():
                 self.plugin["feature_mechanisms"].unencrypted_scram = True
             self.auto_authorize = None  # every request is asked about in Notifications
             self.auto_subscribe = False
-            for plugin in ("xep_0030", "xep_0059", "xep_0066", "xep_0085", "xep_0191", "xep_0198",
+            for plugin in ("xep_0030", "xep_0047", "xep_0059", "xep_0066", "xep_0085", "xep_0191", "xep_0198",
                            "xep_0199", "xep_0203", "xep_0280", "xep_0313", "xep_0359"):
                 self.register_plugin(plugin)
             self.plugin["xep_0199"].enable_keepalive(interval=120, timeout=30)
             self.plugin["xep_0030"].add_feature("http://jabber.org/protocol/chatstates")
+            from jaba_da_hat.backend.jingle import JingleFT
+
+            self.jingle = JingleFT(self, backend)
 
             on = self.add_event_handler
             on("session_start", self._on_session_start)
