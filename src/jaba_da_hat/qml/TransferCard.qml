@@ -11,9 +11,8 @@ Pane {
     padding: 10
     Material.elevation: 1
 
-    readonly property string st: transfer ? transfer.state : ""
-    // teardown can briefly null the transfer before the delegate goes away
-    readonly property var t: transfer || ({ fileName: "", sizeText: "", detail: "", incoming: false, done: 0, progress: 0, canPause: false })
+    readonly property string st: transfer?.state ?? ""
+    // the Transfer can be destroyed just before this delegate during teardown, hence the ?. below
     readonly property var labels: ({
         offered: qsTr("Offered — not downloaded"),
         pending: qsTr("Waiting…"),
@@ -30,18 +29,18 @@ Pane {
         spacing: 4
         RowLayout {
             spacing: 8
-            Label { text: card.t.incoming ? "⬇" : "⬆"; font.pixelSize: 18 }
+            Label { text: (card.transfer?.incoming ?? false) ? "⬇" : "⬆"; font.pixelSize: 18 }
             ColumnLayout {
                 spacing: 0
                 Label {
-                    text: card.t.fileName
+                    text: (card.transfer?.fileName ?? "")
                     font.bold: true
                     elide: Text.ElideMiddle
                     Layout.maximumWidth: 260
                 }
                 Label {
-                    text: card.t.sizeText + " · " + (card.labels[card.st] || card.st)
-                          + (card.t.detail ? " · " + card.t.detail : "")
+                    text: (card.transfer?.sizeText ?? "") + " · " + (card.labels[card.st] || card.st)
+                          + ((card.transfer?.detail ?? "") ? " · " + (card.transfer?.detail ?? "") : "")
                     opacity: 0.7
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -51,8 +50,8 @@ Pane {
         }
         ProgressBar {
             Layout.fillWidth: true
-            visible: card.st === "active" || card.st === "paused" || (card.st === "failed" && card.t.done > 0)
-            value: card.t.progress
+            visible: card.st === "active" || card.st === "paused" || (card.st === "failed" && (card.transfer?.done ?? 0) > 0)
+            value: (card.transfer?.progress ?? 0)
         }
         RowLayout {
             spacing: 4
@@ -68,12 +67,12 @@ Pane {
             }
             Button {
                 text: qsTr("Pause"); flat: true
-                visible: card.st === "active" && card.t.canPause
+                visible: card.st === "active" && (card.transfer?.canPause ?? false)
                 onClicked: session.pauseTransfer(transfer)
             }
             Button {
                 text: card.st === "failed" ? qsTr("Retry") : qsTr("Resume"); flat: true; highlighted: true
-                visible: (card.st === "paused" || card.st === "failed") && card.t.canPause
+                visible: (card.st === "paused" || card.st === "failed") && (card.transfer?.canPause ?? false)
                 onClicked: session.resumeTransfer(transfer)
             }
             Button {
@@ -83,7 +82,7 @@ Pane {
             }
             Button {
                 text: qsTr("Open folder"); flat: true
-                visible: card.st === "completed" && card.t.incoming
+                visible: card.st === "completed" && (card.transfer?.incoming ?? false)
                 onClicked: session.openTransferFolder(transfer)
             }
         }
