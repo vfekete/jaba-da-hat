@@ -20,6 +20,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `jeepney` dependency (pure-Python D-Bus) for the own tray implementation.
 
 ### Fixed
+- Repeated tray wiggle was invisible after the first round: frames changed faster than the panel
+  samples the icon; frames are now held 150 ms and every one is tilted.
 - Tray menu kept showing stale entries (e.g. "Status: Offline / Connecting…" after a successful
   login) because GNOME's AppIndicator extension caches labels per menu-item id; ids are no
   longer reused between menu rebuilds.

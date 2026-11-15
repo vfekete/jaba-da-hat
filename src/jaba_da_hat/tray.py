@@ -19,8 +19,9 @@ log = logging.getLogger(__name__)
 
 RESOURCES = Path(__file__).resolve().parent / "resources"
 MENU_PRESENCES = ("available", "away", "dnd", "offline")
-WIGGLE_ANGLES = (0, 16, 0, -16, 0, 16, 0, -16, 0, 12, 0, -12, 0, 0)  # 14 frames × 70 ms ≈ 1 s of wiggling
-WIGGLE_FRAME_MS = 70
+# 7 frames × 150 ms ≈ 1 s; each frame outlasts the panel's ~140 ms fetch cycle — see docs/comments-details.md [12].
+WIGGLE_ANGLES = (18, -18, 18, -18, 14, -14, 6)
+WIGGLE_FRAME_MS = 150
 WIGGLE_REPEAT_MS = 2000  # …then 1 s still, repeated for as long as something is waiting
 TOAST_LINES = 4
 
@@ -118,6 +119,7 @@ class Tray(QObject):
         if self._kind == "status":
             self._rewiggle.stop()
             return
+        log.debug("wiggle (%s)", self._kind)
         self._wiggle_step = 0
         self._wiggle.start()
         self._rewiggle.start()

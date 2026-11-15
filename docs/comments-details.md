@@ -181,3 +181,18 @@ showing the old texts. The user saw "Status: Offline / Connecting…" long
 after the (mock) login had succeeded, while the tray icon — drawn from live
 state — was already green. A counter that never resets makes every rebuild
 consist of new items, which the extension fetches in full.
+
+## src/jaba_da_hat/tray.py
+
+### [12] Wiggle frames are held 150 ms, with no upright frame in between
+
+The AppIndicator extension does not show every icon we publish. After each
+`NewIcon` signal it waits 30 ms (`MAX_UPDATE_FREQUENCY`), then fetches
+`IconPixmap` asynchronously. Measured on the target machine, that is about one
+fetch per 140 ms. The first wiggle alternated tilted and upright frames every
+70 ms (`0, 16, 0, -16, …`), so the panel sampled every second frame. After
+the first round it mostly hit the upright ones, and the user saw the icon wiggle only once,
+although our timer kept running and the panel kept reading (verified with debug
+logging of every wiggle round and every `IconPixmap` read). Frames now last
+150 ms and alternate between two tilts, so every sample the panel takes is
+visibly different from the previous one.
