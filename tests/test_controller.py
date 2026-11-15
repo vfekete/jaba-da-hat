@@ -228,3 +228,14 @@ def test_best_presence_prefers_priority_then_reachability():
                           "b": {"show": "", "status": "", "priority": 0}}) == ("available", "")
     assert best_presence({"a": {"show": "xa", "status": "zzz", "priority": 5},
                           "b": {"show": "chat", "status": "", "priority": 0}}) == ("xa", "zzz")
+
+
+def test_transfer_info_updates_size_and_pausability(ctl):
+    ctl.login()
+    ctl.backend.fileOffered.emit("link1", "alice@example.org", "photo.jpg", 0)
+    t = ctl._transfers["link1"]
+    assert t.sizeText == "size unknown" and t.canPause
+    ctl.backend.transferInfo.emit("link1", {"size": 2048, "can_pause": False})
+    assert t.size == 2048 and not t.canPause and t.sizeText != "size unknown"
+    ctl.backend.transferProgress.emit("link1", 1024)
+    assert t.progress == 0.5

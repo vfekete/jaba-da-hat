@@ -1,6 +1,6 @@
 # jaba-da-hat — plan and XMPP feasibility
 
-Status: **0.2.0 — real XMPP backend, tested.** File transfer (0.3.0) and OMEMO (0.4.0) still run only on the mock backend.
+Status: **0.3.0 in progress — HTTP Upload / link download done; Jingle FT next.** OMEMO (0.4.0) still runs only on the mock backend.
 
 Decisions made so far (2026-11-15):
 

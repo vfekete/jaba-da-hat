@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- File transfer over HTTP: sending uploads the file to the server's HTTP Upload service
+  (XEP-0363) and sends the link; a received file link (XEP-0066, body = link) shows as a file
+  card. Nothing is fetched before **Download** is pressed, so the size shows as unknown
+  until then.
+- Downloads can be paused, resumed (HTTP `Range`; also works when the server ignores `Range`)
+  and cancelled; uploads can be cancelled (HTTP Upload has no pause, so the button is hidden).
+- Clear errors when the server has no upload service or the file exceeds its size limit.
+- Test server: HTTP Upload component on `https://localhost:15281`.
+
 ## [0.2.0] — 2026-11-15
 
 First version that talks to real XMPP servers. Tested against Prosody and by hand.

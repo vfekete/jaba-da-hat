@@ -6,8 +6,9 @@ A Jabber/XMPP-only instant messenger for GNOME that lives in the system tray.
 No other protocols, no plugins: just XMPP done properly.
 
 > **Status: 0.2.0.** Connects to real XMPP servers (login, contacts, presence,
-> subscriptions, messages, typing, server history). File transfer arrives in 0.3.0 and
-> OMEMO encryption in 0.4.0; until then they work only with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
+> subscriptions, messages, typing, server history) and sends / receives files over HTTP Upload.
+> Direct file transfer (Jingle) is next; OMEMO encryption arrives in 0.4.0 and until then works
+> only with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Features
 
@@ -49,7 +50,8 @@ message, an authorization request, an incoming file and a dropped connection; th
 ### Test server
 
 A throw-away [Prosody](https://prosody.im) in Docker, with test accounts `me`, `alice` and
-`bob` `@localhost` (password `test-password`):
+`bob` `@localhost` (password `test-password`) and an HTTP Upload service for file transfer
+(`https://localhost:15281`):
 
 ```bash
 tools/test-server.sh start     # also creates a test CA in build/prosody/

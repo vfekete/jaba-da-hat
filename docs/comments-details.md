@@ -273,6 +273,32 @@ message content is stored on disk.
 - Messages I sent from another device are skipped in history (the interface
   shows them only live, through carbons, in a chat that is open).
 
+### [20] A message whose body is just its XEP-0066 link is a shared file
+
+HTTP Upload (XEP-0363) only puts a file on a web server; the recipient learns
+about it from an ordinary message. Conversations, Dino, Gajim and others send
+the download URL both as the message body and as an XEP-0066 `<x
+xmlns='jabber:x:oob'><url/>` element, and treat exactly that shape as "file"
+rather than "text". We do the same in both directions:
+
+- receiving: an http(s) OOB URL with an empty body or a body equal to the URL
+  becomes a file card (`fileOffered`). Anything else (a link inside a
+  sentence) stays a message with a clickable link.
+- sending: after the upload finishes we send body = URL plus the OOB element,
+  so other clients show a file and old clients still see a working link.
+
+Nothing is requested from the file server before the user presses Download,
+not even a `HEAD` for the size: any request tells the server (often run by a
+third party) that we are online and from which address. The card therefore
+says "size unknown" until the download starts and `Content-Length` arrives.
+
+Downloads go to `<name>.part` and are renamed when complete. Pause aborts the
+request and keeps the `.part`; resume asks for the rest with `Range`. A
+server that ignores `Range` (answers 200 instead of 206) is handled by starting
+the file over. Uploads cannot be paused: an XEP-0363 slot is a single PUT, so
+the Pause button is hidden for them (`can_pause: False`) and only Cancel is
+offered.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

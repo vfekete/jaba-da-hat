@@ -204,7 +204,9 @@ class Transfer(QObject):
         self.path = ""
 
     def update(self, *, done: int | None = None, state: str | None = None, detail: str | None = None,
-               can_pause: bool | None = None) -> None:
+               can_pause: bool | None = None, size: int | None = None) -> None:
+        if size is not None:
+            self._size = size
         if done is not None:
             self._done = done
         if state is not None:
@@ -217,7 +219,7 @@ class Transfer(QObject):
 
     fileName = Property(str, lambda s: s._file_name, notify=changed)
     size = Property(int, lambda s: s._size, notify=changed)
-    sizeText = Property(str, lambda s: human_size(s._size), notify=changed)
+    sizeText = Property(str, lambda s: human_size(s._size) if s._size > 0 else "size unknown", notify=changed)
     done = Property(int, lambda s: s._done, notify=changed)
     progress = Property(float, lambda s: (s._done / s._size) if s._size else 0.0, notify=changed)
     incoming = Property(bool, lambda s: s._incoming, notify=changed)

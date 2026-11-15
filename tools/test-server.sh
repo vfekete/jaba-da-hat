@@ -3,12 +3,13 @@
 #   tools/test-server.sh start   generate a test CA + certificate, start Prosody, create test users
 #   tools/test-server.sh stop    remove the container (all accounts and archives are gone)
 # Accounts (test-only, not secrets): me@localhost, alice@localhost, bob@localhost — password "test-password".
-# Port 15222 on 127.0.0.1. The CA for --ca-file is build/prosody/ca.crt.
+# XMPP on 127.0.0.1:15222, HTTP Upload (HTTPS) on 127.0.0.1:15281. The CA for --ca-file is build/prosody/ca.crt.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 NAME=jdh-prosody
 IMAGE=prosodyim/prosody:13.0
 PORT=${JDH_TEST_PORT:-15222}
+HTTPS_PORT=15281  # must match http_external_url in tools/prosody/prosody.cfg.lua
 DIR=build/prosody
 USERS=(me alice bob)
 PASSWORD=test-password
@@ -38,7 +39,7 @@ case "${1:-}" in
 start)
     certs
     docker rm -f "$NAME" >/dev/null 2>&1 || true
-    docker run -d --name "$NAME" -p "127.0.0.1:$PORT:5222" \
+    docker run -d --name "$NAME" -p "127.0.0.1:$PORT:5222" -p "127.0.0.1:$HTTPS_PORT:5281" \
         -v "$PWD/tools/prosody/prosody.cfg.lua:/etc/prosody/prosody.cfg.lua:ro" \
         -v "$PWD/$DIR/localhost.crt:/etc/prosody/certs/localhost.crt:ro" \
         -v "$PWD/$DIR/localhost.key:/etc/prosody/certs/localhost.key:ro" \

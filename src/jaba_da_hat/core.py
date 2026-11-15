@@ -67,6 +67,7 @@ class AppController(QObject):
         b.fileOffered.connect(self._on_file_offer)
         b.transferProgress.connect(self._on_transfer_progress)
         b.transferStateChanged.connect(self._on_transfer_state)
+        b.transferInfo.connect(self._on_transfer_info)
         self.roster.changed.connect(self._on_roster_changed)
 
     # ================================================================ properties
@@ -406,6 +407,11 @@ class AppController(QObject):
         t = self._transfers.get(tid)
         if t is not None:
             t.update(done=done)
+
+    def _on_transfer_info(self, tid: str, info: dict) -> None:
+        t = self._transfers.get(tid)
+        if t is not None:
+            t.update(size=info.get("size"), can_pause=info.get("can_pause"))
 
     def _on_transfer_state(self, tid: str, state: str, detail: str) -> None:
         t = self._transfers.get(tid)

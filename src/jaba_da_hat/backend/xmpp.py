@@ -10,13 +10,20 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import gc
+import itertools
 import logging
+import mimetypes
+import os
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+from xml.etree import ElementTree as ET
 
 from PySide6.QtCore import Qt, Signal, Slot
 
 from jaba_da_hat.backend.base import Backend
+from jaba_da_hat.backend.httpfiles import HttpFiles, part_path, trust_ca_file
 from jaba_da_hat.config import Settings, split_server
 
 log = logging.getLogger(__name__)
@@ -29,7 +36,20 @@ PRESENCE = {"": "available", "chat": "available", "away": "away", "dnd": "dnd", 
 _REACHABLE = ("available", "dnd", "away", "xa")
 MAM_PAGE = 50
 MAM_LIMIT = 500  # never pull more than this many archived messages at login
-NOT_YET = "File transfer is not available yet (planned for 0.3.0)."
+UPLOAD_NS = "urn:xmpp:http:upload:0"  # XEP-0363
+
+
+def shared_file_url(msg) -> str:
+    """The link of a file shared through HTTP Upload, or "" for an ordinary message — see docs/comments-details.md [20]."""
+    url = (msg["oob"]["url"] or "").strip()
+    body = (msg["body"] or "").strip()
+    if url.lower().startswith(("https://", "http://")) and (not body or body == url):
+        return url
+    return ""
+
+
+def file_name_from_url(url: str) -> str:
+    return Path(unquote(urlsplit(url).path)).name or "download"
 
 
 def best_presence(resources: dict) -> tuple[str, str]:
@@ -52,6 +72,12 @@ class XmppBackend(Backend):
         super().__init__(parent)
         self._ca_file = ca_file
         self._post.connect(self._dispatch, Qt.QueuedConnection)
+        if ca_file:
+            trust_ca_file(ca_file)
+        # File transfers: main thread only.
+        self._http = HttpFiles(self)
+        self._files: dict[str, dict] = {}
+        self._link_ids = itertools.count(1)
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, name="xmpp", daemon=True)
         self._thread.start()
@@ -143,6 +169,7 @@ class XmppBackend(Backend):
 
     def shutdown(self, timeout: float = 3.0) -> None:
         """Close the connection (waiting up to *timeout* s for the goodbye) and stop the loop thread."""
+        self._http.abort_all()
         async def close():
             c, self._client = self._client, None
             if c is not None and c.is_connected():
@@ -263,24 +290,117 @@ class XmppBackend(Backend):
         else:
             item.unauthorize()  # presence type="unsubscribed": the server drops the request — see [2]
 
-    # ---- file transfer (0.3.0) ---------------------------------------
-    def send_file(self, tid: str, jid: str, path: str) -> None:
-        self.transferStateChanged.emit(tid, "failed", NOT_YET)
+    # ---- file transfer: shared links (XEP-0066) and HTTP Upload (XEP-0363) ----
+    def _file_state(self, tid: str, state: str, detail: str = "") -> None:
+        f = self._files.get(tid)
+        if f is not None:
+            f["state"] = state
+        self.transferStateChanged.emit(tid, state, detail)
+
+    def _offer_link(self, jid: str, url: str) -> None:
+        """Main thread: a contact shared a file link. Nothing is fetched until it is accepted."""
+        tid = f"link{next(self._link_ids)}"
+        self._files[tid] = {"kind": "in", "jid": jid, "url": url, "dest": "", "state": "offered"}
+        self.fileOffered.emit(tid, jid, file_name_from_url(url), 0)
 
     def accept_file(self, tid: str, dest_path: str) -> None:
-        self.transferStateChanged.emit(tid, "failed", NOT_YET)
+        f = self._files.get(tid)
+        if f is None or f["kind"] != "in":
+            return
+        f["dest"] = dest_path
+        self.transferInfo.emit(tid, {"can_pause": True})
+        self._download(tid)
+
+    def _download(self, tid: str) -> None:
+        f = self._files[tid]
+        self._file_state(tid, "active", "")
+
+        def progress(done: int, total: int) -> None:
+            if total and total != f.get("size"):
+                f["size"] = total
+                self.transferInfo.emit(tid, {"size": total})
+            self.transferProgress.emit(tid, done)
+
+        self._http.download(tid, f["url"], f["dest"], progress, lambda st, detail: self._file_state(tid, st, detail))
 
     def decline_file(self, tid: str) -> None:
-        self.transferStateChanged.emit(tid, "declined", "")
+        f = self._files.get(tid)
+        if f is not None and f["state"] == "offered":
+            self._file_state(tid, "declined")  # a shared link needs no answer to the sender
 
     def cancel_transfer(self, tid: str) -> None:
-        self.transferStateChanged.emit(tid, "cancelled", "")
+        f = self._files.get(tid)
+        if f is None or f["state"] in ("completed", "cancelled", "declined"):
+            return
+        if not self._http.abort(tid, "cancelled"):
+            if f["kind"] == "in" and f["dest"]:
+                part_path(f["dest"]).unlink(missing_ok=True)
+            self._file_state(tid, "cancelled")
 
     def pause_transfer(self, tid: str) -> None:
-        pass
+        f = self._files.get(tid)
+        if f is not None and f["kind"] == "in":
+            self._http.abort(tid, "paused")  # the .part file stays; resume continues with a Range request
 
     def resume_transfer(self, tid: str) -> None:
-        pass
+        f = self._files.get(tid)
+        if f is not None and f["kind"] == "in" and f["state"] in ("paused", "failed") and not self._http.busy(tid):
+            self._download(tid)
+
+    def send_file(self, tid: str, jid: str, path: str) -> None:
+        try:
+            size = os.path.getsize(path)
+        except OSError as exc:
+            self.transferStateChanged.emit(tid, "failed", str(exc))
+            return
+        ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        self._files[tid] = {"kind": "out", "jid": jid, "path": path, "size": size, "type": ctype, "state": "pending"}
+        self.transferInfo.emit(tid, {"can_pause": False})  # HTTP Upload cannot pause, only cancel
+        self._file_state(tid, "pending", "Asking the server for an upload slot…")
+        self._call(self._request_slot, tid, jid, os.path.basename(path), size, ctype)
+
+    def _request_slot(self, tid: str, jid: str, name: str, size: int, ctype: str) -> None:
+        c = self._client
+        if c is None or not c.is_connected():
+            self._post.emit(lambda: self._file_state(tid, "failed", "You are offline."))
+            return
+
+        async def run():
+            try:
+                put_url, headers, get_url = await c.request_upload_slot(name, size, ctype)
+            except Exception as exc:  # noqa: BLE001
+                why = str(exc) if isinstance(exc, UploadError) else _describe(exc)
+                self._post.emit(lambda: self._file_state(tid, "failed", why))
+                return
+            self._post.emit(lambda: self._upload(tid, put_url, headers, get_url))
+
+        asyncio.ensure_future(run())
+
+    def _upload(self, tid: str, put_url: str, headers: dict, get_url: str) -> None:
+        f = self._files.get(tid)
+        if f is None or f["state"] != "pending":
+            return  # cancelled while waiting for the slot
+        self._file_state(tid, "active", "")
+
+        def done(state: str, detail: str) -> None:
+            if state == "completed":
+                self._call(self._send_link, f["jid"], get_url)
+            self._file_state(tid, state, detail)
+
+        self._http.upload(tid, put_url, headers, f["path"], f["type"],
+                          lambda sent, _total: self.transferProgress.emit(tid, sent), done)
+
+    def _send_link(self, jid: str, url: str) -> None:
+        c = self._online_client(f"The file was uploaded, but the link could not be sent to {jid}: you are offline.")
+        if c is None:
+            return
+        msg = c.make_message(mto=jid, mbody=url, mtype="chat")
+        msg["oob"]["url"] = url  # body == link marks it as a shared file for other clients — see [20]
+        msg.send()
+
+
+class UploadError(Exception):
+    """A problem with HTTP Upload that is worth showing as it is."""
 
 
 def _describe(exc: BaseException) -> str:
@@ -465,20 +585,59 @@ def _make_client_class():
                 return
             if mtype not in ("chat", "normal") or peer == self.boundjid.bare:
                 return
-            body = msg["body"] or msg["oob"]["url"]  # a bare XEP-0066 link becomes a clickable text
-            if not body:
+            link = shared_file_url(msg)
+            body = msg["body"]
+            if not body and not link:
                 return
             archive_id = msg["stanza_id"]["id"] if msg["stanza_id"]["by"] == self.boundjid.bare else ""
             if archive_id:
                 if archive_id in self.backend._seen_archive_ids:
                     return
                 self.backend._seen_archive_ids.add(archive_id)
-            self.backend._emit(self.backend.messageReceived, peer, body, False)
+            self._deliver(peer, body, link)
+
+        def _deliver(self, peer: str, body: str, link: str) -> None:
+            if link:
+                self.backend._post.emit(lambda: self.backend._offer_link(peer, link))
+            else:
+                self.backend._emit(self.backend.messageReceived, peer, body, False)
 
         def _on_carbon_sent(self, msg) -> None:
             sent = msg["carbon_sent"]
             if sent["type"] in ("chat", "normal") and sent["body"]:
                 self.backend._emit(self.backend.messageSentElsewhere, sent["to"].bare, sent["body"])
+
+        async def upload_service(self) -> tuple[str, int]:
+            """(service JID, max size or 0) of the server's HTTP Upload component; cached per connection."""
+            if getattr(self, "_upload_service", None) is None:
+                self._upload_service = ("", 0)
+                disco = self.plugin["xep_0030"]
+                domain = self.boundjid.domain
+                items = await disco.get_items(jid=domain, timeout=10)
+                for jid in [domain] + [str(i[0]) for i in items["disco_items"]["items"]]:
+                    info = await disco.get_info(jid=jid, timeout=10)
+                    if UPLOAD_NS in info["disco_info"]["features"]:
+                        self._upload_service = (jid, _max_upload_size(info))
+                        break
+            return self._upload_service
+
+        async def request_upload_slot(self, name: str, size: int, ctype: str) -> tuple[str, dict, str]:
+            service, limit = await self.upload_service()
+            if not service:
+                raise UploadError("Your server offers no file upload (XEP-0363).")
+            if limit and size > limit:
+                raise UploadError(f"The file is larger than your server allows ({_mb(limit)}).")
+            iq = self.make_iq_get(ito=service)
+            ET.SubElement(iq.xml, f"{{{UPLOAD_NS}}}request",
+                          {"filename": name, "size": str(size), "content-type": ctype})
+            resp = await iq.send(timeout=30)
+            slot = resp.xml.find(f"{{{UPLOAD_NS}}}slot")
+            put = slot.find(f"{{{UPLOAD_NS}}}put") if slot is not None else None
+            get = slot.find(f"{{{UPLOAD_NS}}}get") if slot is not None else None
+            if put is None or get is None or not put.get("url") or not get.get("url"):
+                raise UploadError("The upload service sent an invalid slot.")
+            headers = {h.get("name", ""): (h.text or "") for h in put.findall(f"{{{UPLOAD_NS}}}header")}
+            return put.get("url"), headers, get.get("url")
 
         def _on_chat_state(self, msg) -> None:
             if msg["type"] in ("chat", "normal") and msg["chat_state"] and not msg["body"]:
@@ -501,15 +660,28 @@ def _make_client_class():
                     aid = result["mam_result"]["id"]
                     if fwd["from"].bare == me or fwd["type"] not in ("chat", "normal", ""):
                         continue
-                    body = fwd["body"] or fwd["oob"]["url"]
-                    if not body or aid in self.backend._seen_archive_ids:
+                    link = shared_file_url(fwd)
+                    if not (fwd["body"] or link) or aid in self.backend._seen_archive_ids:
                         continue
                     self.backend._seen_archive_ids.add(aid)
-                    self.backend._emit(self.backend.messageReceived, fwd["from"].bare, body, False)
+                    self._deliver(fwd["from"].bare, fwd["body"], link)
             except Exception as exc:  # noqa: BLE001
                 log.info("server history unavailable: %s", _describe(exc))
 
     return Client
+
+
+def _max_upload_size(info) -> int:
+    for form in info["disco_info"].xml.findall("{jabber:x:data}x"):
+        for fld in form.findall("{jabber:x:data}field"):
+            if fld.get("var") == "max-file-size":
+                value = fld.findtext("{jabber:x:data}value") or ""
+                return int(value) if value.isdigit() else 0
+    return 0
+
+
+def _mb(size: int) -> str:
+    return f"{size / (1024 * 1024):.0f} MB"
 
 
 def _item(jid, item) -> dict:

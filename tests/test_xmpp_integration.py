@@ -36,7 +36,8 @@ class Recorder:
         self.state = "offline"
         self.events: list[tuple] = []
         for name in ("stateChanged", "error", "loginRejected", "rosterReceived", "contactUpdated", "contactRemoved",
-                     "presenceReceived", "messageReceived", "messageSentElsewhere", "chatStateReceived", "subscriptionRequested"):
+                     "presenceReceived", "messageReceived", "messageSentElsewhere", "chatStateReceived", "subscriptionRequested", "fileOffered", "transferProgress",
+                     "transferStateChanged", "transferInfo"):
             getattr(backend, name).connect(lambda *a, n=name: self._on(n, a))
 
     def _on(self, name, args):
@@ -209,3 +210,112 @@ def test_carbons_from_my_other_device(pair):
     wait_until(lambda: False, 500)  # carbons are enabled right after going online
     phone.send_message("alice@localhost", "sent from the phone", False)
     mr.wait(lambda: ("alice@localhost", "sent from the phone") in mr.of("messageSentElsewhere"))
+
+
+def _states(r, tid):
+    return [e[1] for e in r.of("transferStateChanged") if e[0] == tid]
+
+
+def test_http_upload_and_download_with_resume(pair, tmp_path):
+    me, ms, mr = pair("me")
+    al, as_, ar = pair("alice")
+    online(me, ms, mr)
+    online(al, as_, ar)
+    data = os.urandom(300_000)
+    src = tmp_path / "holiday photo.jpg"
+    src.write_bytes(data)
+
+    al.send_file("t1", "me@localhost", str(src))
+    ar.wait(lambda: "completed" in _states(ar, "t1") or "failed" in _states(ar, "t1"))
+    assert _states(ar, "t1")[-1] == "completed", ar.of("transferStateChanged")
+    assert ("t1", {"can_pause": False}) in ar.of("transferInfo")
+
+    mr.wait(lambda: mr.of("fileOffered"))
+    tid, jid, name, size = mr.of("fileOffered")[0]
+    assert (jid, name, size) == ("alice@localhost", "holiday photo.jpg", 0)  # nothing fetched before accepting
+    assert not mr.of("messageReceived")
+
+    # pretend an earlier attempt stopped after 100 kB: the rest must come with a Range request
+    dest = tmp_path / "dl" / name
+    dest.parent.mkdir()
+    (tmp_path / "dl" / (name + ".part")).write_bytes(data[:100_000])
+    me.accept_file(tid, str(dest))
+    mr.wait(lambda: "completed" in _states(mr, tid) or "failed" in _states(mr, tid))
+    assert _states(mr, tid)[-1] == "completed", mr.of("transferStateChanged")
+    assert dest.read_bytes() == data
+    assert not (tmp_path / "dl" / (name + ".part")).exists()
+    assert (tid, {"size": 300_000}) in mr.of("transferInfo")
+
+
+def test_link_with_text_stays_a_message(pair):
+    me, ms, mr = pair("me")
+    al, as_, ar = pair("alice")
+    online(me, ms, mr)
+    online(al, as_, ar)
+    al.send_message("me@localhost", "look: https://localhost:15281/x.png", False)
+    mr.wait(lambda: mr.of("messageReceived"))
+    assert not mr.of("fileOffered")
+
+
+def test_upload_larger_than_server_limit_fails_clearly(pair, tmp_path):
+    al, as_, ar = pair("alice")
+    online(al, as_, ar)
+    big = tmp_path / "big.bin"
+    with open(big, "wb") as fh:
+        fh.truncate(11 * 1024 * 1024)
+    al.send_file("t2", "me@localhost", str(big))
+    ar.wait(lambda: "failed" in _states(ar, "t2"))
+    detail = [e[2] for e in ar.of("transferStateChanged") if e[0] == "t2" and e[1] == "failed"][0]
+    assert "larger than your server allows" in detail
+
+
+def test_cancel_download(pair, tmp_path):
+    me, ms, mr = pair("me")
+    al, as_, ar = pair("alice")
+    online(me, ms, mr)
+    online(al, as_, ar)
+    src = tmp_path / "a.bin"
+    src.write_bytes(os.urandom(50_000))
+    al.send_file("t3", "me@localhost", str(src))
+    mr.wait(lambda: mr.of("fileOffered"))
+    tid = mr.of("fileOffered")[0][0]
+    me.decline_file(tid)
+    assert _states(mr, tid) == ["declined"]
+
+
+def test_file_through_two_controllers(qapp, server, tmp_path):
+    """Chat window → upload → link → offer card → Download → file in the download folder."""
+    from PySide6.QtCore import QUrl
+
+    from jaba_da_hat import config
+    from jaba_da_hat.backend.xmpp import XmppBackend
+    from jaba_da_hat.core import AppController
+
+    ctls = []
+    for user in ("me", "alice"):
+        s = config.Settings(jid=f"{user}@localhost", password=PASSWORD, server="127.0.0.1", port=PORT,
+                            download_dir=str(tmp_path / user / "dl"), start_at_login=False,
+                            notification_style="gnome")
+        c = AppController(XmppBackend(ca_file=server), s, tmp_path / f"{user}.json")
+        c.login()
+        ctls.append(c)
+    me, alice = ctls
+    try:
+        assert wait_until(lambda: me.connection_state == alice.connection_state == "online", 8000)
+        src = tmp_path / "notes.txt"
+        src.write_text("hello from alice\n")
+        alice.session("me@localhost").sendFile(QUrl.fromLocalFile(str(src)))
+        assert wait_until(lambda: me.sessions.get("alice@localhost") and me.sessions["alice@localhost"].transfers, 8000)
+        s = me.sessions["alice@localhost"]
+        t = next(iter(s.transfers.values()))
+        assert t.state == "offered" and t.fileName == "notes.txt" and me.pending_file_offers() == 1
+        s.acceptTransfer(t)
+        assert wait_until(lambda: t.finished, 8000)
+        assert t.state == "completed", (t.state, t.detail)
+        assert (tmp_path / "me" / "dl" / "notes.txt").read_text() == "hello from alice\n"
+        sent = next(iter(alice.sessions["me@localhost"].transfers.values()))
+        assert sent.state == "completed" and not sent.canPause
+    finally:
+        for c in ctls:
+            c.shutdown()
+            c.backend.shutdown()

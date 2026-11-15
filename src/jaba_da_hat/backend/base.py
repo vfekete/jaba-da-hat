@@ -31,6 +31,7 @@ class Backend(QObject):
     fileOffered = Signal(str, str, str, int)  # tid, jid, file name, size
     transferProgress = Signal(str, int)  # tid, bytes done
     transferStateChanged = Signal(str, str, str)  # tid, state, detail
+    transferInfo = Signal(str, dict)  # tid, {"size": int} and/or {"can_pause": bool}, learned during the transfer
 
     is_mock = False
 
