@@ -62,3 +62,12 @@ def test_unregister_cli(isolated_home, capsys):
     assert autostart.registered_version() is None
     assert main(["--unregister"]) == 0
     assert "was not registered" in capsys.readouterr().out
+
+
+def test_refresh_rewrites_stale_entry_of_same_version(isolated_home):
+    autostart.install_desktop_entry()
+    f = autostart.applications_file()
+    f.write_text(f.read_text().replace(f"Icon={autostart.icon_file()}", "Icon=jaba-da-hat"))
+    assert autostart.refresh_registration() == "updated"
+    assert f"Icon={autostart.icon_file()}" in f.read_text()
+    assert autostart.refresh_registration() == "current"

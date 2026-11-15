@@ -23,7 +23,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   file (incoming file) or note (pending notification), drawn edge to edge to be as big as possible.
 - The binary also registers itself when it is not registered at all (before: only re-registered
   older versions).
-- The .desktop files use an absolute icon path, so GNOME shows the icon without a shell restart.
+- The .desktop files use an absolute icon path, so GNOME shows the icon without a shell restart;
+  a registration of the same version whose entry is out of date (old icon reference, moved
+  binary) is rewritten too.
 - Double click on the tray icon opens a window for every contact with unread messages or a
   waiting file, all at once (single left click always opens the menu —
   that is the AppIndicator extension's behaviour). Menu's last item is now **Close** (was "Quit").

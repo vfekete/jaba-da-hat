@@ -151,8 +151,16 @@ def refresh_registration(current: str = __version__) -> str:
         install_desktop_entry()
         return "registered"
     have, want = parse_version(installed), parse_version(current)
-    if have and have >= want:
-        return "current" if have == want else "newer"
+    if have and have > want:
+        return "newer"
+    if have == want:
+        try:
+            same = applications_file().read_text(encoding="utf-8") == desktop_entry(autostart=False)
+        except OSError:
+            same = False
+        if same and icon_file().exists():
+            return "current"
+        # same version but stale entry (moved binary, older icon reference): rewrite it
     autostart_was_on = is_enabled()
     install_desktop_entry()
     if autostart_was_on:
