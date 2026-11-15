@@ -1,9 +1,11 @@
-# <img src="assets/app-icon.png" alt="" width="48" align="center"> jaba-da-hat
+# <img src="assets/app-icon.png" alt="" height="100px" align="center"> Jaba da Hat
 
 <img src="docs/screenshots/tray-menu.png" alt="Tray menu" height="230"> <img src="docs/screenshots/contacts-light.png" alt="Contacts" height="230"> <img src="docs/screenshots/chat-light.png" alt="Chat" height="230"> <img src="docs/screenshots/chat-dark.png" alt="Chat, dark theme" height="230"> <img src="docs/screenshots/settings-dark.png" alt="Settings, dark theme" height="230"> <img src="docs/screenshots/toast-light.png" alt="Toast" width="300"> <img src="docs/screenshots/tray-icons.png" alt="Tray icons" width="250">
 
 A Jabber/XMPP-only instant messenger for GNOME that lives in the system tray.
 No other protocols, no plugins: just XMPP done properly.
+
+Why? Because Pidgin crashes on Ubuntu 26.06 and psi too and others are, well, lame.
 
 > **Status: 1.0.1.** Connects to real XMPP servers (login, contacts, presence,
 > subscriptions, messages, typing, server history) and transfers files over Jingle or HTTP
