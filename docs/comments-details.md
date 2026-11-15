@@ -168,3 +168,16 @@ publishes its actions (submenus, sections, radio/check states, icons) and
 triggers the `QAction` on `clicked`, so the menu code and its tests stayed
 unchanged. Tested end-to-end against a private `dbus-daemon` with a fake
 watcher (tests/test_sni.py) and live against GNOME's watcher.
+
+### [11] Menu item ids are never reused
+
+The AppIndicator extension (`dbusMenu.js`, `_doLayoutUpdate`) asks `GetLayout`
+only for the `type` and `children-display` properties. For an id it
+already knows it applies just those and keeps its cached label, enabled
+and toggle state. It fetches full properties (`GetGroupProperties`) only for
+ids it has not seen. The first exporter renumbered items from 1 on every rebuild,
+so a rebuilt menu with the same shape reused every id and the panel kept
+showing the old texts. The user saw "Status: Offline / Connecting…" long
+after the (mock) login had succeeded, while the tray icon — drawn from live
+state — was already green. A counter that never resets makes every rebuild
+consist of new items, which the extension fetches in full.

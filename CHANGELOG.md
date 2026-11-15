@@ -20,6 +20,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `jeepney` dependency (pure-Python D-Bus) for the own tray implementation.
 
 ### Fixed
+- Tray menu kept showing stale entries (e.g. "Status: Offline / Connecting…" after a successful
+  login) because GNOME's AppIndicator extension caches labels per menu-item id; ids are no
+  longer reused between menu rebuilds.
 - Busy (wait) cursor after double click or menu actions that open no window: the tray is now
   our own StatusNotifierItem/dbusmenu implementation that does not accept activation tokens.
 - `Gdk-CRITICAL … GDK_IS_WAYLAND_WINDOW` when opening file dialogs: dialogs now go through the

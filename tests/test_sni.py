@@ -92,6 +92,10 @@ def test_menu_exporter_layout(qapp):
     assert [r["toggle-state"][1] for r in radios] == [0, 1]
     assert any(k[1][1].get("type") == ("s", "separator") for k in kids)
     close_id = next(k[1][0] for k in kids if k[1][1].get("label") == ("s", "Close"))
+    old_ids = set(ex.items) - {0}
+    ex.rebuild()
+    assert not old_ids & (set(ex.items) - {0})  # stale panel caches can never match a new item
+    close_id = next(k[1][0] for k in ex.layout(0, -1, [])[1][2] if k[1][1].get("label") == ("s", "Close"))
     assert ex.trigger(close_id)
     wait_for(lambda: clicked == ["close"])
 

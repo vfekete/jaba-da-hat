@@ -107,20 +107,23 @@ def png_bytes(pixmap: QPixmap) -> bytes:
 
 
 class MenuExporter:
-    """Publishes a QMenu tree as com.canonical.dbusmenu layout; ids are reassigned on every rebuild."""
+    """Publishes a QMenu tree as com.canonical.dbusmenu layout.
+
+    Item ids are never reused across rebuilds — see docs/comments-details.md [11].
+    """
 
     def __init__(self, menu: QMenu):
         self.menu = menu
         self.revision = 1
         self.actions: dict[int, QAction] = {}
         self.items: dict[int, tuple[dict, list[int]]] = {}  # id -> (props, child ids)
+        self._next = 1
         self.rebuild()
 
     def rebuild(self) -> None:
         self.revision += 1
         self.actions.clear()
         self.items = {}
-        self._next = 1
         self.items[0] = ({"children-display": ("s", "submenu")}, self._children(self.menu))
 
     def _children(self, menu: QMenu) -> list[int]:
