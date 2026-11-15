@@ -156,3 +156,16 @@ def test_blocked_contacts_dialog(ui, qml_messages):
     dialog.accept()
     assert wait_until(lambda: ui.blockedJids == [], 1000)
     assert qml_messages == []
+
+
+def test_clear_removes_note_icon_but_keeps_pending_requests(ui):
+    tray = Tray(ui)
+    ui.backend.simulate_subscription_request()
+    ui._on_error("Server closed the connection: test")
+    assert tray._kind == "note"
+    ui.clearNotifications()
+    assert tray._kind == "status"  # Clear means "seen": the icon calms down
+    assert [n["kind"] for n in ui.notifications.items()] == ["subscription"]  # still answerable
+    assert ui.notifications.count == 1 and ui.notifications.unseen == 0
+    ui.backend.simulate_subscription_request()  # something new: attention again
+    assert tray._kind == "note"

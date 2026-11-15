@@ -87,7 +87,7 @@ class Tray(QObject):
         unread = app.roster.total_unread()
         files = app.pending_file_offers()
         notes = app.notifications.count
-        kind = trayicons.tray_kind(unread, files, notes)
+        kind = trayicons.tray_kind(unread, files, app.notifications.unseen)  # only what came since the last Clear
         if kind != self._kind:
             self._kind = kind
             if kind == "status":

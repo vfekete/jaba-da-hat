@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-11-16
+
+### Fixed
+- **Clear** in Notifications left the tray's note icon on when an authorization request was still
+  pending (Clear keeps those, since they still need an answer). The note icon now shows only for
+  notifications that arrived after the last Clear; pending requests stay listed and answerable.
+
 ## [1.0.1] — 2026-11-15
 
 ### Added

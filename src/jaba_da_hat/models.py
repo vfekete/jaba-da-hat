@@ -300,7 +300,7 @@ class NotificationModel(_RoleModel):
             self.remove_where(kind=kind, jid=jid)
         nid = f"n{next(self._ids)}"
         self.beginInsertRows(QModelIndex(), len(self._rows), len(self._rows))
-        self._rows.append({"nid": nid, "kind": kind, "jid": jid, "text": text,
+        self._rows.append({"nid": nid, "kind": kind, "jid": jid, "text": text, "seen": False,
                            "time": datetime.now().strftime("%H:%M")})
         self.endInsertRows()
         self.countChanged.emit()
@@ -321,6 +321,12 @@ class NotificationModel(_RoleModel):
                 self.endRemoveRows()
         self.countChanged.emit()
 
+    def mark_all_seen(self) -> None:
+        """What is left stays listed but no longer asks for attention (tray icon)."""
+        for r in self._rows:
+            r["seen"] = True
+        self.countChanged.emit()
+
     def clear(self) -> None:
         self.beginResetModel()
         self._rows.clear()
@@ -328,3 +334,4 @@ class NotificationModel(_RoleModel):
         self.countChanged.emit()
 
     count = Property(int, lambda s: len(s._rows), notify=countChanged)
+    unseen = Property(int, lambda s: sum(not r["seen"] for r in s._rows), notify=countChanged)

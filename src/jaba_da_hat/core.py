@@ -377,8 +377,10 @@ class AppController(QObject):
 
     @Slot()
     def clearNotifications(self) -> None:  # noqa: N802
+        """Drop problems and info; unanswered authorization requests stay listed but stop the tray icon."""
         self.notifications.remove_where(kind="error")
         self.notifications.remove_where(kind="info")
+        self.notifications.mark_all_seen()
 
     # ================================================================ messages
     def session(self, jid: str) -> ChatSession:
