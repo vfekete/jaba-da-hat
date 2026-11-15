@@ -17,7 +17,7 @@ def test_install_desktop_entry(isolated_home):
     written = autostart.install_desktop_entry()
     assert all(str(p).startswith(str(isolated_home)) for p in written)
     entry = autostart.applications_file().read_text()
-    assert "Icon=jaba-da-hat" in entry and "Categories=Network;InstantMessaging;Chat;" in entry
+    assert f"Icon={autostart.icon_file()}" in entry and autostart.icon_file().exists() and "Categories=Network;InstantMessaging;Chat;" in entry
     assert any(p.name == "jaba-da-hat.png" for p in written)
     removed = autostart.uninstall_desktop_entry()
     assert set(removed) >= set(written)
@@ -29,9 +29,9 @@ def test_parse_version():
     assert autostart.parse_version("garbage") == ()
 
 
-def test_refresh_does_not_register_by_itself(isolated_home):
-    assert autostart.refresh_registration("1.0.0") == "unregistered"
-    assert not autostart.applications_file().exists()
+def test_refresh_registers_when_missing(isolated_home):
+    assert autostart.refresh_registration() == "registered"
+    assert autostart.registered_version() == autostart.__version__
 
 
 def test_refresh_reregisters_older_version_and_autostart(isolated_home):

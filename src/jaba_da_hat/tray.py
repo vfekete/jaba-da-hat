@@ -5,75 +5,37 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRectF, Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QFont, QIcon, QPainter, QPixmap
+import logging
+
+from PySide6.QtCore import QObject, QProcess, Qt, QTimer
+from PySide6.QtGui import QActionGroup, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from jaba_da_hat import APP_NAME
+from jaba_da_hat import APP_NAME, autostart, trayicons
 from jaba_da_hat.models import PRESENCE_LABELS, UNGROUPED
 
+log = logging.getLogger(__name__)
+
 RESOURCES = Path(__file__).resolve().parent / "resources"
-PRESENCE_COLORS = {
-    "available": "#2ec27e",
-    "away": "#f5c211",
-    "xa": "#e66100",
-    "dnd": "#e01b24",
-    "offline": "#9a9996",
-}
 MENU_PRESENCES = ("available", "away", "dnd", "offline")
+WIGGLE_ANGLES = (0, 16, 0, -16, 0, 16, 0, -16, 0, 10, 0, -10, 0)
+WIGGLE_FRAME_MS = 70
+WIGGLE_REPEAT_MS = 15000  # wiggle again while something is still waiting
+TOAST_LINES = 4
 
 
-def status_icon(presence: str, size: int = 16) -> QIcon:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor(PRESENCE_COLORS.get(presence, "#9a9996")))
-    p.drawEllipse(QRectF(2, 2, size - 4, size - 4))
-    p.end()
-    return QIcon(pm)
+def status_icon(presence: str) -> QIcon:
+    return QIcon(trayicons.status_pixmap(presence, 32))
 
 
 def app_pixmap(size: int = 256) -> QPixmap:
+    """The application logo — used for windows and the .desktop launcher, never for the tray."""
     for cand in (RESOURCES / f"icon-{size}.png", RESOURCES / "icon-256.png"):
         if cand.exists():
             return QPixmap(str(cand)).scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     pm = QPixmap(size, size)
     pm.fill(QColor("#3584e4"))
     return pm
-
-
-def tray_pixmap(presence: str, unread: int, size: int = 64) -> QPixmap:
-    """App icon with a presence dot (bottom-right) and an unread badge (top-right)."""
-    base = app_pixmap(size)
-    if presence == "offline":
-        img = base.toImage().convertToFormat(base.toImage().Format.Format_Grayscale8)
-        faded = QPixmap(size, size)
-        faded.fill(Qt.transparent)
-        p = QPainter(faded)
-        p.setOpacity(0.6)
-        p.drawImage(0, 0, img)
-        p.end()
-        base = faded
-    p = QPainter(base)
-    p.setRenderHint(QPainter.Antialiasing)
-    d = size * 0.38
-    p.setPen(QColor("#ffffff"))
-    p.setBrush(QColor(PRESENCE_COLORS.get(presence, "#9a9996")))
-    p.drawEllipse(QRectF(size - d - 1, size - d - 1, d, d))
-    if unread:
-        b = size * 0.5
-        p.setBrush(QColor("#e01b24"))
-        p.drawEllipse(QRectF(size - b, 0, b, b))
-        f = QFont()
-        f.setBold(True)
-        f.setPixelSize(int(b * 0.62))
-        p.setFont(f)
-        p.setPen(QColor("#ffffff"))
-        p.drawText(QRectF(size - b, 0, b, b), Qt.AlignCenter, str(unread) if unread < 10 else "9+")
-    p.end()
-    return base
 
 
 class Tray(QObject):
@@ -87,7 +49,16 @@ class Tray(QObject):
         self.icon.activated.connect(self._on_activated)
         self.icon.messageClicked.connect(self._on_message_clicked)
         self._last_notified_jid = ""
+        self._kind = "status"
+        self._wiggle_step = -1
+        self._wiggle = QTimer(self, interval=WIGGLE_FRAME_MS)
+        self._wiggle.timeout.connect(self._wiggle_frame)
+        self._rewiggle = QTimer(self, interval=WIGGLE_REPEAT_MS)
+        self._rewiggle.timeout.connect(self.start_wiggle)
+        self._toast: QProcess | None = None
+        self._toast_events: list[tuple[str, str, str, str]] = []  # events shown in the current toast
         app.stateChanged.connect(self.refresh)
+        app.activityChanged.connect(self.refresh)
         app.presenceChanged.connect(self.refresh)
         app.unreadChanged.connect(self.refresh)
         app.notifications.countChanged.connect(self.refresh)
@@ -100,34 +71,147 @@ class Tray(QObject):
 
     # ---- icon / tooltip ----------------------------------------------
     def refresh(self) -> None:
-        unread = self.app.roster.total_unread()
-        self.icon.setIcon(QIcon(tray_pixmap(self.app.presence, unread)))
-        state = self.app.connection_state
-        tip = f"{APP_NAME} — {PRESENCE_LABELS[self.app.presence] if state != 'connecting' else 'Connecting…'}"
+        app = self.app
+        unread = app.roster.total_unread()
+        files = app.pending_file_offers()
+        notes = app.notifications.count
+        kind = trayicons.tray_kind(unread, files, notes)
+        if kind != self._kind:
+            self._kind = kind
+            if kind == "status":
+                self._wiggle.stop()
+                self._rewiggle.stop()
+                self._wiggle_step = -1
+        if self._wiggle_step < 0:
+            self._set_icon(0)
+        state = app.connection_state
+        tip = f"{APP_NAME} — {PRESENCE_LABELS[app.presence] if state != 'connecting' else 'Connecting…'}"
         if unread:
             tip += f"\n{unread} unread message(s)"
-        n = self.app.notifications.count
-        if n:
-            tip += f"\n{n} notification(s)"
+        if files:
+            tip += f"\n{files} incoming file(s)"
+        if notes:
+            tip += f"\n{notes} notification(s)"
         self.icon.setToolTip(tip)
-        if self.menu.isVisible():
-            self.rebuild_menu()
 
-    def show_notification(self, title: str, body: str, jid: str) -> None:
-        """Desktop notification through the freedesktop D-Bus service. See docs/comments-details.md [4]."""
+    def _set_icon(self, angle: float) -> None:
+        self.icon.setIcon(QIcon(trayicons.render(self._kind, self.app.presence, angle)))
+
+    # ---- wiggle ------------------------------------------------------
+    def start_wiggle(self) -> None:
+        """Shake the envelope / file / note icon so new activity gets noticed."""
+        if self._kind == "status":
+            self._rewiggle.stop()
+            return
+        self._wiggle_step = 0
+        self._wiggle.start()
+        self._rewiggle.start()
+
+    def _wiggle_frame(self) -> None:
+        if self._wiggle_step < 0 or self._wiggle_step >= len(WIGGLE_ANGLES):
+            self._wiggle.stop()
+            self._wiggle_step = -1
+            self._set_icon(0)
+            return
+        self._set_icon(WIGGLE_ANGLES[self._wiggle_step])
+        self._wiggle_step += 1
+
+    # ---- notifications -----------------------------------------------
+    def show_notification(self, title: str, body: str, jid: str, kind: str) -> None:
+        """Announce an event: wiggle the tray icon and show a toast and/or a GNOME notification."""
         self._last_notified_jid = jid
+        self.refresh()
+        self.start_wiggle()
+        style = self.app.settings.notification_style
+        if style in ("toast", "both"):
+            self._toast_events.append((title, body, jid, kind))
+            self._show_toast()
+        if style in ("gnome", "both"):
+            self._show_gnome(title, body)
+
+    def _show_gnome(self, title: str, body: str) -> None:
+        """Desktop notification through the freedesktop D-Bus service. See docs/comments-details.md [4]."""
         self.icon.showMessage(title, body, QIcon(app_pixmap(128)), 8000)
 
+    @staticmethod
+    def summarize(events: list[tuple[str, str, str, str]]) -> tuple[str, str, str]:
+        """(title, body, kind) for one toast covering all *events* that arrived while it was up."""
+        if len(events) == 1:
+            title, body, _jid, kind = events[0]
+            return title, body, kind
+        kinds = {e[3] for e in events}
+        kind = next(k for k in ("message", "file", "note") if k in kinds)
+        n_msg = sum(1 for e in events if e[3] == "message")
+        n_file = sum(1 for e in events if e[3] == "file")
+        n_note = len(events) - n_msg - n_file
+        parts = [f"{n} {word}{'s' if n > 1 else ''}" for n, word in
+                 ((n_msg, "message"), (n_file, "file"), (n_note, "notification")) if n]
+        senders = len({e[2] for e in events if e[2]})
+        title = ", ".join(parts) + (f" from {senders} contacts" if senders > 1 else "")
+        lines = [f"{t}: {b.splitlines()[0][:70]}" for t, b, _j, _k in events[-TOAST_LINES:]]
+        if len(events) > TOAST_LINES:
+            lines.insert(0, f"…and {len(events) - TOAST_LINES} earlier")
+        return title, "\n".join(lines), kind
+
+    def _show_toast(self) -> None:
+        if self._toast is not None and self._toast.state() != QProcess.NotRunning:
+            self._toast.finished.disconnect()
+            self._toast.errorOccurred.disconnect()
+            self._toast.kill()  # replaced by a toast that also lists the new event
+            self._toast.waitForFinished(300)
+        events = list(self._toast_events)
+        title, body, kind = self.summarize(events)
+        cmd = autostart.self_command() + ["--toast", title, body, "--toast-kind", kind]
+        if self.app.darkTheme:
+            cmd.append("--toast-dark")
+        proc = QProcess(self)
+        proc.finished.connect(lambda code, _status, p=proc: self._toast_done(p, code, events))
+        proc.errorOccurred.connect(lambda err, p=proc: err == QProcess.FailedToStart and self._toast_done(p, -1, events))
+        self._toast = proc
+        proc.start(cmd[0], cmd[1:])
+
+    def _toast_done(self, proc: QProcess, code: int, events: list) -> None:
+        try:
+            err = bytes(proc.readAllStandardError()).decode(errors="ignore")[-300:]
+            proc.deleteLater()
+        except RuntimeError:  # already destroyed during shutdown
+            return
+        if self._toast is proc:
+            self._toast = None
+        self._toast_events = []
+        if code == 0:
+            self.open_events(events)
+        elif code not in (1, 2):
+            log.warning("toast helper failed (exit %s): %s", code, err)
+            title, body, _kind = self.summarize(events)
+            self._show_gnome(title, body)
+
+    def open_events(self, events: list) -> None:
+        """Clicked toast: open every chat it mentioned (several windows at once), or the notifications."""
+        jids = list(dict.fromkeys(e[2] for e in events if e[2]))
+        for jid in jids:
+            self.app.openChat(jid)
+        if any(not e[2] for e in events):
+            self.app.openNotifications()
+
+    def close_toast(self) -> None:
+        if self._toast is not None and self._toast.state() != QProcess.NotRunning:
+            self._toast.finished.disconnect()
+            self._toast.kill()
+            self._toast.waitForFinished(500)
+
     def _on_message_clicked(self) -> None:
-        if self._last_notified_jid:
+        if self.app.waiting_jids():
+            self.app.openUnread()
+        elif self._last_notified_jid:
             self.app.openChat(self._last_notified_jid)
         else:
             self.app.openNotifications()
 
     def _on_activated(self, reason) -> None:
-        """Left click only opens an unread chat; everything else is done from the menu."""
-        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) and self.app.roster.total_unread():
-            self.app.openFirstUnread()
+        """The AppIndicator extension opens the menu on left click and calls Activate on double click."""
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self.app.openUnread()  # every waiting chat at once; nothing if none
 
     # ---- menu --------------------------------------------------------
     def rebuild_menu(self) -> None:
@@ -136,7 +220,7 @@ class Tray(QObject):
         app = self.app
         state = app.connection_state
 
-        header = m.addAction(QIcon(app_pixmap(32)), f"{APP_NAME} — {app.settings.jid or 'no account'}")
+        header = m.addAction(f"{APP_NAME} — {app.settings.jid or 'no account'}")
         header.setEnabled(False)
 
         status = m.addMenu(status_icon(app.presence), f"Status: {PRESENCE_LABELS[app.presence]}")

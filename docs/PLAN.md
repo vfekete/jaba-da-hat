@@ -16,7 +16,10 @@ Decisions made so far (2026-11-15):
 | OMEMO trust | Never trust automatically: every device needs your approval, and an approval lasts only until the chat window closes |
 | Server history | Fetch MAM history, show it as incoming messages, forget it when the window closes |
 | Test server (0.2.0) | Throw-away Prosody in a container |
-| Tray left click | Opens the unread chat; does nothing if there is none. Last menu item is **Close** |
+| Tray clicks | Left click opens the menu (fixed by the AppIndicator extension); double click opens every waiting chat at once. The menu closes after each click (GNOME Shell), accepted. Last menu item is **Close** |
+| Tray icon | Status circles; envelope / file / note when something waits; wiggles on new activity. The logo is for the launcher only |
+| Notifications | Own toast top-right through XWayland (GNOME banners are off on the target machine); events arriving together share one toast, and a click opens all their chats; GNOME notification optional |
+| Registration | The binary registers itself if missing and re-registers over older versions; `--register` / `--unregister` |
 
 ## 1. Feasibility: requirement → protocol
 
@@ -39,7 +42,7 @@ Legend: ✅ fully covered by a standard · 🟡 possible with caveats · 🖥 cl
 | Drag & drop: drop on contact → new group with both; insertion line | RFC 6121 groups | 🟡 | Group membership is stored; **position inside a group is not** (the protocol has no ordering). The line shows which group the contact lands in; groups are sorted alphabetically — see Q1. |
 | Notifications for XMPP events (subscription requests, errors) | RFC 6121 §3.1.3–3.1.4 | ✅ | |
 | Declining authorization must stop re-flooding | RFC 6121 §3.1.4, §3.2 — reply with `presence type="unsubscribed"` | ✅ | The server then deletes the pending request and stops redelivering it at each login. A peer can still send a *new* request later, so we also offer **Decline & block** (XEP-0191). |
-| New message → GNOME notification + tray icon change | freedesktop Notifications (D-Bus), StatusNotifierItem | ✅ | **Vanilla GNOME has no tray**; Ubuntu ships the AppIndicator extension (present on this machine). Without it the app opens the Contacts window instead. |
+| New message → notification + tray icon change | StatusNotifierItem; own toast; optional freedesktop Notifications | ✅ | **Vanilla GNOME has no tray**; Ubuntu ships the AppIndicator extension. It always opens the menu on left click and closes the menu after any item click; only double click reaches the app. GNOME banners are hidden under Do Not Disturb, hence the own toast. |
 | Presence change changes the app (icon) | — | 🖥 | Tray icon shows a presence dot and greys out when offline. |
 | Typing notifications (send / show) | XEP-0085 Chat States | ✅ | Two separate settings. |
 | Settings: theme, typing, account, download folder | — | 🖥 | |

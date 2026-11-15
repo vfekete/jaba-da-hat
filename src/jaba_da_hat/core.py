@@ -26,7 +26,8 @@ class AppController(QObject):
     themeChanged = Signal()
     unreadChanged = Signal()
     # tray hooks
-    notify = Signal(str, str, str)  # title, body, jid ("" = not a chat message)
+    notify = Signal(str, str, str, str)  # title, body, jid ("" = not a chat), kind: message | file | note
+    activityChanged = Signal()  # file offers / transfers changed (tray icon)
 
     def __init__(self, backend: Backend, settings: config.Settings, settings_path: Path | None = None,
                  engine: QQmlApplicationEngine | None = None, parent=None):
@@ -177,7 +178,7 @@ class AppController(QObject):
 
     def _on_error(self, text: str) -> None:
         self.notifications.add("error", text)
-        self.notify.emit(f"{APP_NAME}: problem", text, "")
+        self.notify.emit(f"{APP_NAME}: problem", text, "", "note")
         if "Authentication failed" in text:
             self._wanted_online = False  # retrying with a bad password would only lock the account
 
@@ -270,7 +271,7 @@ class AppController(QObject):
     def _on_subscription(self, jid: str, msg: str) -> None:
         text = f"{jid} wants to add you to their contacts." + (f"\n“{msg}”" if msg else "")
         self.notifications.add("subscription", text, jid)
-        self.notify.emit("Authorization request", text, "")
+        self.notify.emit("Authorization request", text, "", "note")
 
     @Slot(str)
     def acceptSubscription(self, nid: str) -> None:  # noqa: N802
@@ -314,7 +315,7 @@ class AppController(QObject):
         if win is None or not win.property("active"):
             self.roster.add_unread(jid)
             c = self.roster.contact(jid)
-            self.notify.emit(c.display_name if c else jid, body[:200], jid)
+            self.notify.emit(c.display_name if c else jid, body[:200], jid, "message")
 
     def _on_chat_state(self, jid: str, state: str) -> None:
         if jid in self.sessions:
@@ -333,10 +334,15 @@ class AppController(QObject):
         if s is not None:
             for tid in s.transfers:
                 self._transfers.pop(tid, None)
+            self.activityChanged.emit()
             s.deleteLater()
         self.mark_read(jid)
 
     # ================================================================ file transfer
+    def pending_file_offers(self) -> int:
+        """Incoming files nobody has accepted or declined yet."""
+        return sum(1 for t in self._transfers.values() if t.incoming and t.state == "offered")
+
     def register_transfer(self, t: Transfer) -> None:
         self._transfers[t.tid] = t
 
@@ -357,9 +363,9 @@ class AppController(QObject):
         s.add_transfer(t)
         win = self.windows.get(jid)
         if win is None or not win.property("active"):
-            self.roster.add_unread(jid)
             c = self.roster.contact(jid)
-            self.notify.emit(c.display_name if c else jid, f"Wants to send you “{t.fileName}” ({t.sizeText})", jid)
+            self.notify.emit(c.display_name if c else jid, f"Wants to send you “{t.fileName}” ({t.sizeText})", jid, "file")
+        self.activityChanged.emit()
 
     def _on_transfer_progress(self, tid: str, done: int) -> None:
         t = self._transfers.get(tid)
@@ -373,6 +379,7 @@ class AppController(QObject):
         if state == "completed" and t.incoming and detail and detail != t.path:
             state = "failed"  # backend reports a save error in *detail*
         t.update(state=state, detail=detail)
+        self.activityChanged.emit()
 
     # ================================================================ windows
     def _create_window(self, qml: str, props: dict) -> QObject | None:
@@ -403,12 +410,17 @@ class AppController(QObject):
         self._show(win)
         self.mark_read(jid)
 
+    def waiting_jids(self) -> list[str]:
+        """Contacts with unread messages or unanswered file offers, in roster order."""
+        offers = {t.jid for t in self._transfers.values() if t.incoming and t.state == "offered"}
+        return [c.jid for c in self.roster.contacts() if c.unread or c.jid in offers] + \
+            sorted(j for j in offers if self.roster.contact(j) is None)
+
     @Slot()
-    def openFirstUnread(self) -> None:  # noqa: N802
-        for c in self.roster.contacts():
-            if c.unread:
-                self.openChat(c.jid)
-                return
+    def openUnread(self) -> None:  # noqa: N802
+        """Open a chat window for every contact with something waiting (several windows at once)."""
+        for jid in self.waiting_jids():
+            self.openChat(jid)
 
     def _open_singleton(self, key: str, qml: str) -> None:
         win = self._singletons.get(key)

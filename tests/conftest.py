@@ -53,7 +53,7 @@ def ctl(qapp, tmp_path):
     from jaba_da_hat.core import AppController
 
     settings = config.Settings(jid="me@example.org", password="mock", download_dir=str(tmp_path / "dl"),
-                               start_at_login=False)
+                               start_at_login=False, notification_style="gnome")  # never spawn toast windows
     c = AppController(MockBackend(fast=True), settings, tmp_path / "cfg.json")
     c.notified = []
     c.notify.connect(lambda *a: c.notified.append(a))

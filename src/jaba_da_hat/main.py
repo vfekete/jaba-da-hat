@@ -30,6 +30,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--open", choices=("contacts", "settings", "notifications"),
                    help="open a window right after start (handy for testing)")
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--toast", nargs=2, metavar=("TITLE", "BODY"), help=argparse.SUPPRESS)  # internal helper
+    p.add_argument("--toast-kind", default="message", help=argparse.SUPPRESS)
+    p.add_argument("--toast-dark", action="store_true", help=argparse.SUPPRESS)
     return p.parse_args(argv)
 
 
@@ -55,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+    if args.toast:
+        from jaba_da_hat.toast import run_toast
+
+        return run_toast(args.toast[0], args.toast[1], args.toast_kind, args.toast_dark)
+
     from jaba_da_hat import autostart
 
     if args.register:
@@ -70,7 +78,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if autostart.is_packaged():  # from source the launcher would point at the venv, so only the binary does this
         installed = autostart.registered_version()
-        if autostart.refresh_registration() == "updated":
+        result = autostart.refresh_registration()
+        if result == "registered":
+            log.info("registered %s %s for this user", APP_NAME, __version__)
+        elif result == "updated":
             log.info("re-registered: launcher updated from %s to %s", installed or "?", __version__)
 
     from PySide6.QtCore import Qt, QTimer
@@ -142,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     sig_notifier = _install_quit_signals(qapp)
     qapp.commitDataRequest.connect(lambda _m: ctl.shutdown())
     qapp.aboutToQuit.connect(ctl.shutdown)
+    qapp.aboutToQuit.connect(tray.close_toast)
 
     if args.open:
         {"contacts": ctl.openContacts, "settings": ctl.openSettings,

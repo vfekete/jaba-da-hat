@@ -12,9 +12,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - At startup the binary re-registers itself when an older version is registered, so the
   launcher and autostart entry always point to the newest binary; it never registers on its own.
 
+- Own toast notification in the top-right corner (XWayland helper process), because GNOME hides
+  banners under Do Not Disturb; Settings → Appearance chooses toast / GNOME / both.
+- Several events at once (messages from different people, file offers, notifications) are
+  combined into one toast listing them all; clicking it opens every mentioned chat at once.
+- Tray icon wiggles on a new message, file or notification, and again every 15 s while it waits.
+
 ### Changed
-- Left click on the tray icon only opens an unread chat and otherwise does nothing; the app is
-  controlled from the menu, whose last item is now **Close** (was "Quit").
+- Tray icon no longer uses the app logo: coloured status circles, or an envelope (unread message),
+  file (incoming file) or note (pending notification), drawn edge to edge to be as big as possible.
+- The binary also registers itself when it is not registered at all (before: only re-registered
+  older versions).
+- The .desktop files use an absolute icon path, so GNOME shows the icon without a shell restart.
+- Double click on the tray icon opens a window for every contact with unread messages or a
+  waiting file, all at once (single left click always opens the menu —
+  that is the AppIndicator extension's behaviour). Menu's last item is now **Close** (was "Quit").
 - Plan updated with the answered questions: OMEMO devices are never trusted automatically
   (approval lasts until the chat closes), server history (MAM) is fetched and shown as
   incoming messages, Prosody is the test server.

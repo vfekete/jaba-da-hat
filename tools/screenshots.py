@@ -10,7 +10,8 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
@@ -85,6 +86,33 @@ def main() -> None:
     tray.menu.grab().save(str(OUT / "tray-menu.png"))
     print(OUT / "tray-menu.png")
     tray.menu.hide()
+
+    import os
+    import subprocess
+
+    for theme in ("light", "dark"):
+        env = dict(os.environ, JDH_TOAST_PLATFORM="offscreen", JDH_TOAST_GRAB=str(OUT / f"toast-{theme}.png"))
+        if theme == "light":
+            cmd = [sys.executable, "-m", "jaba_da_hat", "--toast", "Alice", "Hi! Did you see the plan at https://example.org/plan ?"]
+        else:
+            title, body, _k = Tray.summarize([("Alice", "Hi! Did you see the plan?", "alice@example.org", "message"),
+                                              ("Bob", "Wants to send you “notes.txt” (12 KiB)", "bob@example.org", "file"),
+                                              ("Carol", "Lunch?", "carol@example.net", "message")])
+            cmd = [sys.executable, "-m", "jaba_da_hat", "--toast", title, body]
+        subprocess.run(cmd + (["--toast-dark"] if theme == "dark" else []), env=env, timeout=30, check=False)
+        print(OUT / f"toast-{theme}.png")
+
+    from jaba_da_hat import trayicons
+
+    strip = QPixmap(5 * 72, 64)
+    strip.fill(Qt.transparent)
+    p = QPainter(strip)
+    for i, (kind, presence) in enumerate([("status", "available"), ("status", "away"), ("status", "dnd"),
+                                          ("message", "available"), ("file", "available")]):
+        p.drawPixmap(i * 72, 0, trayicons.render(kind, presence, 0, 64))
+    p.end()
+    strip.save(str(OUT / "tray-icons.png"))
+    print(OUT / "tray-icons.png")
 
 
 if __name__ == "__main__":

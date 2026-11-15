@@ -101,7 +101,7 @@ def test_incoming_message_without_window_notifies_and_counts(ctl):
     ctl.login()
     ctl.backend.messageReceived.emit("alice@example.org", "hello", True)
     assert ctl.roster.total_unread() == 1
-    assert ctl.notified[-1] == ("Alice", "hello", "alice@example.org")
+    assert ctl.notified[-1] == ("Alice", "hello", "alice@example.org", "message")
     ctl.mark_read("alice@example.org")
     assert ctl.roster.total_unread() == 0
 

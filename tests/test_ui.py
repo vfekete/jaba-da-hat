@@ -4,7 +4,8 @@ import pytest
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 from PySide6.QtQml import QQmlApplicationEngine
 
-from jaba_da_hat.tray import Tray, tray_pixmap
+from jaba_da_hat import trayicons
+from jaba_da_hat.tray import Tray
 
 
 @pytest.fixture
@@ -66,16 +67,57 @@ def test_tray_menu_builds(ui):
     ui.logout()
     tray.rebuild_menu()
     assert "Log on" in [a.text() for a in tray.menu.actions()]
-    assert not tray_pixmap("offline", 3).isNull()
+    for kind in ("status", "message", "file", "note"):
+        assert not trayicons.render(kind, "dnd", 16).isNull()
 
 
-def test_tray_left_click_only_opens_unread(ui):
+def test_tray_icon_kind_follows_activity(ui):
+    tray = Tray(ui)
+    assert tray._kind == "status"
+    ui.backend.simulate_subscription_request()
+    assert tray._kind == "note"
+    ui.backend.simulate_file_offer("alice@example.org")
+    assert tray._kind == "file" and ui.pending_file_offers() == 1
+    assert tray._wiggle.isActive()
+    ui.backend.messageReceived.emit("bob@example.org", "hi", False)
+    assert tray._kind == "message"
+    ui.mark_read("bob@example.org")
+    assert tray._kind == "file"
+    s = ui.sessions["alice@example.org"]
+    s.declineTransfer(next(iter(s.transfers.values())))
+    assert tray._kind == "note"
+    ui.notifications.clear()
+    tray.refresh()
+    assert tray._kind == "status"
+
+
+def test_tray_activate_opens_all_waiting_chats(ui):
     from PySide6.QtWidgets import QSystemTrayIcon
 
     tray = Tray(ui)
-    tray._on_activated(QSystemTrayIcon.Trigger)
-    assert ui.windows == {} and ui._singletons == {}  # nothing unread → nothing happens
+    tray._on_activated(QSystemTrayIcon.DoubleClick)
+    assert ui.windows == {} and ui._singletons == {}  # nothing waiting → nothing happens
     ui.backend.messageReceived.emit("bob@example.org", "hi", False)
-    tray._on_activated(QSystemTrayIcon.Trigger)
-    assert list(ui.windows) == ["bob@example.org"]
+    ui.backend.messageReceived.emit("carol@example.net", "hello", False)
+    ui.backend.messageReceived.emit("bob@example.org", "still there?", False)
+    ui.backend.simulate_file_offer("erin@example.org")
+    tray._on_activated(QSystemTrayIcon.DoubleClick)
+    assert set(ui.windows) == {"bob@example.org", "carol@example.net", "erin@example.org"}
     assert ui.roster.total_unread() == 0
+    assert ui.sessions["bob@example.org"].messages.rowCount() == 2
+
+
+def test_toast_summary_and_click_opens_every_chat(ui):
+    tray = Tray(ui)
+    one = [("Alice", "hi", "alice@example.org", "message")]
+    assert tray.summarize(one) == ("Alice", "hi", "message")
+    events = [("Alice", "hi", "alice@example.org", "message"),
+              ("Bob", "Wants to send you “a.txt” (1 KiB)", "bob@example.org", "file"),
+              ("Alice", "second", "alice@example.org", "message"),
+              ("Authorization request", "x wants…", "", "note")]
+    title, body, kind = tray.summarize(events)
+    assert title == "2 messages, 1 file, 1 notification from 2 contacts" and kind == "message"
+    assert body.count("\n") == 3 and "Bob: Wants" in body
+    tray.open_events(events)
+    assert set(ui.windows) == {"alice@example.org", "bob@example.org"}
+    assert "notifications" in ui._singletons

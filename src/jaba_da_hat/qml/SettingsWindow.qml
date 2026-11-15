@@ -35,6 +35,7 @@ ApplicationWindow {
             auto_reconnect: autoReconnect.checked,
             start_at_login: startAtLogin.checked,
             theme: ["system", "light", "dark"][theme.currentIndex],
+            notification_style: ["toast", "gnome", "both"][notifStyle.currentIndex],
             send_typing: sendTyping.checked,
             show_typing: showTyping.checked,
             download_dir: downloadDir.text.trim()
@@ -117,6 +118,17 @@ ApplicationWindow {
             }
             Label {
                 text: qsTr("“Follow system” switches automatically when GNOME's dark style is toggled.")
+                wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: 12
+            }
+            Label { text: qsTr("Notifications"); font.bold: true; Layout.topMargin: 12 }
+            ComboBox {
+                id: notifStyle
+                Layout.preferredWidth: 260
+                model: [qsTr("Own toast (top right)"), qsTr("GNOME notification"), qsTr("Both")]
+                currentIndex: Math.max(0, ["toast", "gnome", "both"].indexOf(win.s.notification_style || "toast"))
+            }
+            Label {
+                text: qsTr("GNOME hides its notification banners while “Do Not Disturb” is on; the own toast is shown regardless. The tray icon always shakes on new activity.")
                 wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: 12
             }
             Item { Layout.fillHeight: true }

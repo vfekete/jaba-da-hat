@@ -1,6 +1,6 @@
 # <img src="assets/app-icon.png" alt="" width="48" align="center"> jaba-da-hat
 
-<img src="docs/screenshots/tray-menu.png" alt="Tray menu" height="230"> <img src="docs/screenshots/contacts-light.png" alt="Contacts" height="230"> <img src="docs/screenshots/chat-light.png" alt="Chat" height="230"> <img src="docs/screenshots/chat-dark.png" alt="Chat, dark theme" height="230"> <img src="docs/screenshots/settings-dark.png" alt="Settings, dark theme" height="230">
+<img src="docs/screenshots/tray-menu.png" alt="Tray menu" height="230"> <img src="docs/screenshots/contacts-light.png" alt="Contacts" height="230"> <img src="docs/screenshots/chat-light.png" alt="Chat" height="230"> <img src="docs/screenshots/chat-dark.png" alt="Chat, dark theme" height="230"> <img src="docs/screenshots/settings-dark.png" alt="Settings, dark theme" height="230"> <img src="docs/screenshots/toast-light.png" alt="Toast" width="300"> <img src="docs/screenshots/tray-icons.png" alt="Tray icons" width="250">
 
 A Jabber/XMPP-only instant messenger for GNOME that lives in the system tray.
 No other protocols, no plugins: just XMPP done properly.
@@ -11,7 +11,9 @@ No other protocols, no plugins: just XMPP done properly.
 
 ## Features
 
-- Tray icon showing your presence and unread messages; left click opens an unread chat, everything else is in the right-click menu
+- Tray icon: a coloured status circle, or an envelope / file / note that wiggles when something
+  is waiting; double click opens the unread chat, everything else is in the menu
+- Own toast notifications in the top-right corner (also when GNOME's Do Not Disturb hides banners)
 - Presence: available / away / do not disturb / offline; log on / log off; automatic login and reconnect
 - Contacts submenu (only online / all), single click opens a chat
 - Chat window: remote side left, you right, clickable links, **nothing is ever auto-loaded**,
@@ -51,9 +53,13 @@ in Settings to simulate a failed login.
 ./build/jdh-0.1.0 --unregister   # remove launcher, autostart entry and icon
 ```
 
-At every start the binary checks the registered version; if an older version is registered it
-re-registers itself, so the launcher and the autostart entry point to the new binary. It never
-registers on its own.
+At every start the binary checks the registration: if the app is not registered it registers
+itself, and if an older version is registered it re-registers, so the launcher and the autostart
+entry point to the new binary. A newer registered version is left alone.
+
+The tray icon is as big as the panel lets it be. To make all tray icons bigger, raise the
+AppIndicator extension's icon size (0 = panel default), e.g.
+`gsettings set org.gnome.shell.extensions.appindicator icon-size 24`.
 
 The binary is self-contained (Python, Qt and the QML files are inside). On first start it
 unpacks to `~/.cache/jaba-da-hat/<version>`, so later starts are fast.

@@ -10,6 +10,7 @@ from pathlib import Path
 from jaba_da_hat import APP_ID
 
 THEMES = ("system", "light", "dark")
+NOTIFICATION_STYLES = ("toast", "gnome", "both")
 
 
 def config_dir() -> Path:
@@ -37,6 +38,7 @@ class Settings:
     start_at_login: bool = True
     # Appearance
     theme: str = "system"
+    notification_style: str = "toast"  # toast | gnome | both
     # Privacy
     send_typing: bool = True
     show_typing: bool = True
@@ -61,6 +63,8 @@ def load(path: Path | None = None) -> Settings:
     s = Settings(**{k: v for k, v in raw.items() if k in known})
     if s.theme not in THEMES:
         s.theme = "system"
+    if s.notification_style not in NOTIFICATION_STYLES:
+        s.notification_style = "toast"
     return s
 
 

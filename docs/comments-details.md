@@ -96,3 +96,35 @@ Nuitka directly with the `pyside6` plugin is simpler and more predictable.
 The Wayland and platform-theme Qt plugins are listed explicitly because
 the "sensible" default set does not cover a GNOME Wayland session (dark-mode
 detection and window decorations depend on them).
+
+## src/jaba_da_hat/toast.py
+
+### [7] Own toast through XWayland, in a helper process
+
+The user's GNOME has notification banners off (`org.gnome.desktop.notifications
+show-banners = false`, which is what the "Do Not Disturb" switch sets), so
+freedesktop notifications only land silently in the message list. The app
+therefore draws its own toast. On native Wayland a client cannot position its
+windows. GNOME places a new toplevel itself (usually centred) and may give it
+focus, and GNOME does not implement wlr-layer-shell. Under XWayland a window
+with `Qt::ToolTip | X11BypassWindowManagerHint` is override-redirect, so
+Mutter shows it exactly where asked (top-right, below the panel) and never
+focuses it. Running the whole app on XWayland would make every window blurry
+with fractional scaling, so only the toast runs on XWayland, as a
+short-lived child process (`jdh --toast …`) started by the tray. Its exit code
+says what happened (0 clicked → open the chat, 1 timeout, 2 dismissed); any
+other code (no XWayland, crash) falls back to a GNOME notification.
+
+## src/jaba_da_hat/autostart.py (cont.)
+
+### [8] Absolute icon path in the .desktop files
+
+With `Icon=jaba-da-hat` GNOME Shell has to find the icon in the
+`hicolor` theme under `~/.local/share/icons`. That directory has no
+`index.theme`/icon cache of its own, and GNOME Shell caches theme lookups,
+so a freshly installed icon is often not found until the shell restarts
+(on Wayland that means logging out). This is what the user saw after the first
+registration. The Desktop Entry spec allows an absolute path in `Icon=`,
+which GNOME loads directly without any cache. The themed copies are still
+installed for other consumers, and caches are refreshed best-effort without
+touching system directories.

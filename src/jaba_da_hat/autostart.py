@@ -31,14 +31,22 @@ def is_packaged() -> bool:
     return bool(os.environ.get("NUITKA_ONEFILE_BINARY")) or "__compiled__" in globals()
 
 
-def executable_command() -> str:
-    """Command that starts *this* copy of the app — the packaged binary when frozen. See docs/comments-details.md [3]."""
+def self_command() -> list[str]:
+    """argv that starts *this* copy of the app — the packaged binary when frozen. See docs/comments-details.md [3]."""
     onefile = os.environ.get("NUITKA_ONEFILE_BINARY")
     if onefile:
-        return shlex.quote(onefile)
+        return [onefile]
     if "__compiled__" in globals():
-        return shlex.quote(sys.argv[0])
-    return f"{shlex.quote(sys.executable)} -m jaba_da_hat"
+        return [sys.argv[0]]
+    return [sys.executable, "-m", "jaba_da_hat"]
+
+
+def executable_command() -> str:
+    return shlex.join(self_command())
+
+
+def icon_file(size: int = 256) -> Path:
+    return _xdg("XDG_DATA_HOME", ".local/share") / "icons" / "hicolor" / f"{size}x{size}" / "apps" / f"{ICON_NAME}.png"
 
 
 def desktop_entry(autostart: bool) -> str:
@@ -49,11 +57,12 @@ def desktop_entry(autostart: bool) -> str:
         "GenericName=Jabber Messenger",
         "Comment=Jabber/XMPP instant messenger living in the system tray",
         f"Exec={executable_command()}{' --autostart' if autostart else ''}",
-        f"Icon={ICON_NAME}",
+        f"Icon={icon_file()}",  # absolute path: no icon-theme cache involved — see docs/comments-details.md [8]
         "Terminal=false",
         "Categories=Network;InstantMessaging;Chat;",
         "Keywords=jabber;xmpp;chat;im;",
         "StartupNotify=false",
+        f"StartupWMClass={APP_ID}",
         f"X-AppVersion={__version__}",
     ]
     if autostart:
@@ -86,7 +95,7 @@ def install_desktop_entry() -> list[Path]:
     for size in (64, 128, 256):
         src = RESOURCES / f"icon-{size}.png"
         if src.exists():
-            dst = data / "icons" / "hicolor" / f"{size}x{size}" / "apps" / f"{ICON_NAME}.png"
+            dst = icon_file(size)
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_bytes(src.read_bytes())
             written.append(dst)
@@ -94,7 +103,26 @@ def install_desktop_entry() -> list[Path]:
     app.parent.mkdir(parents=True, exist_ok=True)
     app.write_text(desktop_entry(autostart=False), encoding="utf-8")
     written.append(app)
+    _refresh_desktop_caches(data)
     return written
+
+
+def _refresh_desktop_caches(data: Path) -> None:
+    """Best effort: tell desktop-file-utils / GTK about the user-level changes (never touches system dirs)."""
+    import shutil
+    import subprocess
+
+    cmds = []
+    if shutil.which("update-desktop-database"):
+        cmds.append(["update-desktop-database", str(data / "applications")])
+    hicolor = data / "icons" / "hicolor"
+    if shutil.which("gtk-update-icon-cache") and (hicolor / "index.theme").exists():
+        cmds.append(["gtk-update-icon-cache", "-q", "-t", str(hicolor)])
+    for cmd in cmds:
+        try:
+            subprocess.run(cmd, check=False, capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 def parse_version(text: str) -> tuple[int, ...]:
@@ -114,13 +142,14 @@ def registered_version() -> str | None:
 
 
 def refresh_registration(current: str = __version__) -> str:
-    """Re-register if an older version is registered. Returns "updated", "current", "newer" or "unregistered".
+    """Register if missing, re-register if an older version is registered.
 
-    Never registers on its own — that is what --register is for.
+    Returns "registered", "updated", "current" or "newer" (a newer version is registered — left alone).
     """
     installed = registered_version()
     if installed is None:
-        return "unregistered"
+        install_desktop_entry()
+        return "registered"
     have, want = parse_version(installed), parse_version(current)
     if have and have >= want:
         return "current" if have == want else "newer"
@@ -136,9 +165,11 @@ def uninstall_desktop_entry() -> list[Path]:
     removed = []
     data = _xdg("XDG_DATA_HOME", ".local/share")
     candidates = [applications_file(), autostart_file()]
-    candidates += [data / "icons" / "hicolor" / f"{s}x{s}" / "apps" / f"{ICON_NAME}.png" for s in (64, 128, 256)]
+    candidates += [icon_file(s) for s in (64, 128, 256)]
     for p in candidates:
         if p.exists():
             p.unlink()
             removed.append(p)
+    if removed:
+        _refresh_desktop_caches(data)
     return removed
