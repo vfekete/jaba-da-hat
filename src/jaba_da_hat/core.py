@@ -17,6 +17,7 @@ from jaba_da_hat.chat import ChatSession
 from jaba_da_hat.models import PRESENCE_LABELS, PRESENCES, UNGROUPED, Contact, NotificationModel, RosterModel, Transfer
 
 log = logging.getLogger(__name__)
+clog = logging.getLogger("jaba_da_hat.connection")
 RECONNECT_DELAYS_S = (3, 10, 30, 60, 120, 300)  # then stays at the last value
 QML_DIR = Path(__file__).resolve().parent / "qml"
 
@@ -207,6 +208,7 @@ class AppController(QObject):
         """Retry with growing pauses; one notification per outage, not per attempt."""
         delay = RECONNECT_DELAYS_S[min(self._reconnect_attempt, len(RECONNECT_DELAYS_S) - 1)]
         self._reconnect_attempt += 1
+        clog.info("reconnecting in %d s (attempt %d)", delay, self._reconnect_attempt)
         if announce:
             self.notifications.add("error", "Disconnected — reconnecting…")
         QTimer.singleShot(delay * 1000, lambda: self._wanted_online and self.connection_state == "offline"
@@ -214,6 +216,7 @@ class AppController(QObject):
 
     # ---- suspend / network (sysevents.SystemEvents) — see docs/comments-details.md [23]
     def on_sleep(self, going: bool) -> None:
+        clog.info("system %s", "going to sleep" if going else "resumed")
         if going:
             self._asleep = True
             if self.connection_state == "offline":
@@ -226,6 +229,7 @@ class AppController(QObject):
             self._reconnect_now()
 
     def on_network(self, up: bool) -> None:
+        clog.info("network %s", "available" if up else "lost")
         if not up or self._asleep or not self._wanted_online:
             return
         if self.connection_state == "offline":
@@ -243,6 +247,7 @@ class AppController(QObject):
         self._persist()
 
     def _on_error(self, text: str) -> None:
+        log.warning("%s", text)
         self.notifications.add("error", text)
         self.notify.emit(f"{APP_NAME}: problem", text, "", "note")
 

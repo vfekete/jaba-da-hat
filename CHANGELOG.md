@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-11-15
+
+### Added
+- Connection log (`jaba_da_hat.connection`, shown by default): where we connect, how long each
+  session lasted, the disconnect reason and who closed it, failed attempts, stream errors,
+  stream management / resumption, sleep / network events and each scheduled reconnect. Problem
+  notifications are logged too. No passwords or message content.
+
+### Fixed
+- Every connect to a manually set server began with a failed direct-TLS handshake on the STARTTLS
+  port; now port 5223 means direct TLS and any other port STARTTLS, nothing is tried twice.
+- An existing registration (e.g. made with `--register` or by an older version) never got an
+  autostart entry although "start at login" is on by default; a missing entry is now created at
+  start whenever that setting is on (an entry switched off in GNOME is left alone).
+- `build.sh` removes older `jdh-*` binaries (except the one the launcher points at), so an old
+  version can't be started by accident.
+
 ## [1.0.0] — 2026-11-15
 
 First stable version: chat, contacts, blocking, file transfer and OMEMO encryption against real

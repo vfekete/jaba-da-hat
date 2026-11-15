@@ -15,6 +15,7 @@ import logging
 import mimetypes
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -28,6 +29,7 @@ from jaba_da_hat.backend.httpfiles import HttpFiles, part_path, trust_ca_file
 from jaba_da_hat.config import Settings, split_server
 
 log = logging.getLogger(__name__)
+clog = logging.getLogger("jaba_da_hat.connection")  # every connection event with its reason (INFO, no secrets)
 
 # Our presence → XMPP <show/> (RFC 6121 §4.7.2.1); "available" has no <show/>.
 SHOW = {"available": "", "away": "away", "dnd": "dnd", "xa": "xa"}
@@ -141,11 +143,13 @@ class XmppBackend(Backend):
             if self._client.is_connected():
                 self._emit_state("online")
                 return
+            clog.info("reconnecting to %s (stream resumption possible)", self._client._target())
             self._client.connect(*self._address(settings))  # same account: XEP-0198 may resume the session
             return
         self._drop_client()
         self._account = account
         self._client = c = _Client(self, settings, self._ca_file)
+        clog.info("connecting to %s", c._target())
         c.connect(*self._address(settings))
 
     @staticmethod
@@ -166,6 +170,7 @@ class XmppBackend(Backend):
             self._emit_state("offline")
             return
         c.closing = True
+        clog.info("logging off")
         c.disconnect(wait=2.0, reason="Logged off")
 
     def _drop_client(self) -> None:
@@ -192,7 +197,7 @@ class XmppBackend(Backend):
                 try:
                     await c.plugin["xep_0199"].ping(timeout=PING_CHECK_S)
                 except Exception as exc:  # noqa: BLE001 — no answer: the old TCP connection is dead
-                    log.info("connection check failed (%s); reconnecting", _describe(exc))
+                    clog.warning("connection check after a network change failed (%s); reconnecting", _describe(exc))
                     if c is self._client:
                         c.abort()  # → disconnected → offline → the controller reconnects
 
@@ -633,6 +638,12 @@ def _make_client_class():
             self.closing = False
             self._last_failure = ""
             self._history_since = settings.history_since
+            host, port = split_server(settings.server, settings.port)
+            self._manual = (host, port) if host else None
+            if self._manual:
+                # A manual server speaks either direct TLS (5223 by convention) or STARTTLS, not both — see [24].
+                self.enable_direct_tls = port == 5223
+                self.enable_starttls = port != 5223
             if ca_file:
                 self.ca_certs = ca_file
             self.enable_plaintext = not settings.require_tls
@@ -655,7 +666,9 @@ def _make_client_class():
 
             on = self.add_event_handler
             on("session_start", self._on_session_start)
-            on("session_resumed", lambda _e: self._state("online"))
+            on("session_resumed", self._on_resumed)
+            on("sm_enabled", lambda st: clog.info("stream management on (resumable: %s)", bool(st["id"])))
+            on("sm_failed", lambda _st: clog.info("server refused stream management or resumption"))
             on("disconnected", self._on_disconnected)
             on("connection_failed", self._on_connection_failed)
             on("failed_all_auth", self._on_auth_failed)
@@ -685,6 +698,7 @@ def _make_client_class():
 
         def _reject(self, text: str) -> None:
             """A permanent failure: report it, stop this connection and don't retry automatically."""
+            clog.warning("login rejected, not retrying: %s", text)
             self.backend._emit(self.backend.loginRejected, text)
             self.closing = True
             self.cancel_connection_attempt()
@@ -697,6 +711,7 @@ def _make_client_class():
                 return None
             self._current_connection_attempt = None
             if not self.closing:
+                clog.warning("all addresses of %s failed: %s", self._target(), self._last_failure or "no route")
                 if not self.backend._failure_reported:
                     self.backend._failure_reported = True
                     self._error(f"Cannot connect to {self._target()}: {self._last_failure or 'no route'}")
@@ -705,8 +720,8 @@ def _make_client_class():
 
         # ---- connection events ---------------------------------------
         def _target(self) -> str:
-            if self.custom_address:
-                host, port = self.custom_address
+            host, port = self._manual or (None, None)
+            if host:
                 return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
             return f"{self.boundjid.domain} (address looked up via DNS)"
 
@@ -717,6 +732,7 @@ def _make_client_class():
             elif text.startswith("No DNS record"):  # slixmpp names the JID domain even for a manual server
                 text = "host name not found" if self.custom_address else f"no DNS entry for {self.boundjid.domain}"
             self._last_failure = text
+            clog.info("connection attempt failed: %s", text)
 
         def _on_auth_failed(self, _event) -> None:
             self._reject(f"Authentication failed for {self.boundjid.bare}: check the Jabber ID and password.")
@@ -726,18 +742,31 @@ def _make_client_class():
 
         def _on_stream_error(self, err) -> None:
             cond = err["condition"]
+            clog.warning("stream error from server: %s %s", cond, err["text"] or "")
             if cond == "conflict":
                 self._reject("Disconnected: this account logged in elsewhere with the same resource.")
             else:
                 self._error(f"Server closed the connection: {err['text'] or cond}")
 
-        def _on_disconnected(self, _reason) -> None:
+        def _on_disconnected(self, reason) -> None:
+            since = getattr(self, "_online_since", None)
+            lasted = f" after {time.monotonic() - since:.0f} s online" if since else ""
+            self._online_since = None
+            clog.info("disconnected%s: %s%s", lasted, reason or "connection closed",
+                      " (by us)" if self.closing else "")
             if self.backend._is_current(self) or self.closing:
                 self.backend._emit_state("offline")
+
+        def _on_resumed(self, _event) -> None:
+            self._online_since = time.monotonic()
+            clog.info("session resumed (XEP-0198)")
+            self._state("online")
 
         async def _on_session_start(self, _event) -> None:
             if not self.current:
                 return
+            self._online_since = time.monotonic()
+            clog.info("online as %s on %s", self.boundjid.full, self._target())
             try:
                 await self.get_roster()
             except Exception as exc:  # noqa: BLE001

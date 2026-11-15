@@ -414,6 +414,17 @@ the tray):
 The user's choice still rules: after Log off, neither event logs back in.
 Without a system bus (containers, tests) the app simply doesn't react.
 
+### [24] A manual server gets one TLS mode, chosen by the port
+
+With a manual server, slixmpp tried every method in turn: direct TLS first,
+then STARTTLS. On the usual port 5222 (STARTTLS) the direct-TLS attempt always
+fails (`SSL: RECORD_LAYER_FAILURE`), so every connect and reconnect began with
+a failed handshake: a wasted round trip, and, against a server running
+fail2ban or similar, repeated garbage on the port that can get the address
+blocked. Now a manual server uses direct TLS only on 5223 (the XEP-0368
+convention) and STARTTLS on any other port. Without a manual server, DNS SRV
+records name the method for each address, as before.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

@@ -77,6 +77,12 @@ uv run --quiet python -m nuitka \
 mv -f "$WORK/$APP-$VERSION" "$OUT"
 chmod +x "$OUT"
 rm -rf "$WORK"
+# older binaries only invite starting the wrong version by accident (tab completion); the one the
+# registered launcher points at stays until the new binary has re-registered itself
+REGISTERED=$(sed -n 's/^Exec=//p' "${XDG_DATA_HOME:-$HOME/.local/share}/applications/jaba-da-hat.desktop" 2>/dev/null | head -1)
+for old in build/"$APP"-*; do
+    [[ -f $old && $old != "$OUT" && $(readlink -f "$old") != "$REGISTERED" ]] && { rm -f "$old"; echo "removed old $old"; }
+done
 
 # 6. smoke test: the binary must at least report its version
 "./$OUT" --version

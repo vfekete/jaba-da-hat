@@ -85,15 +85,18 @@ def main(argv: list[str] | None = None) -> int:
         result = autostart.refresh_registration()
         if result == "registered":
             log.info("registered %s %s for this user", APP_NAME, __version__)
-            from jaba_da_hat import config
-
-            if config.load(args.config).start_at_login:  # first start: "start at login" is on by default
-                autostart.set_enabled(True)
         elif result == "updated":
             if installed == __version__:
                 log.info("registration of %s refreshed (launcher entry was out of date)", __version__)
             else:
                 log.info("re-registered: launcher updated from %s to %s", installed or "?", __version__)
+
+        from jaba_da_hat import config
+
+        # Setting on (the default) but no entry at all → create it; an entry switched off elsewhere is respected.
+        if result != "newer" and config.load(args.config).start_at_login and not autostart.autostart_file().exists():
+            autostart.set_enabled(True)
+            log.info("autostart entry created (Settings → start at login is on)")
 
     from PySide6.QtCore import QLoggingCategory, Qt, QTimer
     from PySide6.QtGui import QGuiApplication, QIcon
