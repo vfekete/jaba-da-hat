@@ -7,8 +7,8 @@ No other protocols, no plugins: just XMPP done properly.
 
 > **Status: 0.3.0.** Connects to real XMPP servers (login, contacts, presence,
 > subscriptions, messages, typing, server history) and transfers files over Jingle or HTTP
-> Upload, with pause / resume. OMEMO encryption arrives in 0.4.0 and until then works only
-> with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
+> Upload, with pause / resume, and encrypts chats and files with OMEMO (you approve every device,
+> per chat window). See [docs/PLAN.md](docs/PLAN.md).
 
 ## Features
 
@@ -87,6 +87,7 @@ pointing at the binary (or at the venv when run from source).
 ## Configuration
 
 `~/.config/jaba-da-hat/config.json` (mode 0600, because it contains the password).
+OMEMO keys live in `~/.local/share/jaba-da-hat/omemo/` (mode 0600); device approvals are never stored.
 Received files go to `~/Downloads` unless changed in Settings.
 
 ## Development

@@ -62,6 +62,9 @@ class AppController(QObject):
         b.presenceReceived.connect(self._on_presence)
         b.messageReceived.connect(self._on_message)
         b.messageSentElsewhere.connect(self._on_sent_elsewhere)
+        b.notice.connect(self._on_notice)
+        b.encryptionAvailable.connect(self._on_encryption_available)
+        b.trustRequested.connect(self._on_trust_requested)
         b.chatStateReceived.connect(self._on_chat_state)
         b.subscriptionRequested.connect(self._on_subscription)
         b.fileOffered.connect(self._on_file_offer)
@@ -177,6 +180,8 @@ class AppController(QObject):
         self.connection_state = state
         if state == "online":
             self._reconnect_attempt = 0
+            for jid in self.sessions:
+                self.backend.refresh_encryption(jid)
             if self._presence != "available":
                 self.backend.set_presence(self._presence)
         if state == "offline":
@@ -336,6 +341,8 @@ class AppController(QObject):
             s = ChatSession(self, jid, self)
             s.closed.connect(self._on_session_closed)
             self.sessions[jid] = s
+            if self.connection_state == "online":
+                self.backend.refresh_encryption(jid)
         return s
 
     def _on_message(self, jid: str, body: str, encrypted: bool) -> None:
@@ -347,11 +354,28 @@ class AppController(QObject):
             c = self.roster.contact(jid)
             self.notify.emit(c.display_name if c else jid, body[:200], jid, "message")
 
-    def _on_sent_elsewhere(self, jid: str, body: str) -> None:
+    def _on_sent_elsewhere(self, jid: str, body: str, encrypted: bool) -> None:
         """Show what I wrote from another device, but only in a chat that is already open."""
         s = self.sessions.get(jid)
         if s is not None:
-            s.messages.add_text("out", body, False)
+            s.messages.add_text("out", body, encrypted)
+
+    def _on_notice(self, jid: str, text: str) -> None:
+        self.session(jid).messages.add_system(text)
+
+    def _on_encryption_available(self, jid: str, available: bool) -> None:
+        s = self.sessions.get(jid)
+        if s is not None:
+            s.encryption_known(available)
+
+    def _on_trust_requested(self, jid: str, rid: str, request: dict) -> None:
+        """OMEMO wants approval of devices; only an open chat window can give it."""
+        s = self.sessions.get(jid)
+        if s is None or not s.window_open:
+            self.backend.answer_trust(rid, None)
+            return
+        s.request_trust(rid, request)
+        self.openChat(jid)
 
     def _on_chat_state(self, jid: str, state: str) -> None:
         if jid in self.sessions:
@@ -363,6 +387,7 @@ class AppController(QObject):
             self.roster.add_unread(jid, 0)
 
     def _on_session_closed(self, jid: str) -> None:
+        self.backend.forget_trust(jid)  # device approvals last only while the window is open
         s = self.sessions.pop(jid, None)
         w = self.windows.pop(jid, None)
         if w is not None:

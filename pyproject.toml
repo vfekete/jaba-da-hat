@@ -9,6 +9,9 @@ dependencies = [
     "pyside6-essentials>=6.8",
     "jeepney>=0.8",
     "slixmpp>=1.17.0",
+    "slixmpp-omemo>=2.2.0",
+    "oldmemo[xml]>=2.1.0",
+    "twomemo[xml]>=2.1.0",
 ]
 
 [project.scripts]

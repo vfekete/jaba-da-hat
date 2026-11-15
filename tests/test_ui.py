@@ -119,3 +119,23 @@ def test_toast_summary_and_click_opens_every_chat(ui):
     tray.open_events(events)
     assert set(ui.windows) == {"alice@example.org", "bob@example.org"}
     assert "notifications" in ui._singletons
+
+
+def test_chat_window_trust_dialog(ui, qml_messages):
+    from PySide6.QtCore import QObject
+
+    from conftest import wait_until
+
+    ui.openChat("bob@example.org")
+    s = ui.sessions["bob@example.org"]
+    s.send("hello")
+    wait_until(lambda: False, 150)
+    win = ui.windows["bob@example.org"]
+    dialog = next(o for o in win.findChildren(QObject) if o.property("title") == "Approve encryption devices")
+    assert dialog.property("visible")
+    s.approveDevices([s.trustRequest["devices"][0]["id"]] if s.trustRequest else [])
+    assert wait_until(lambda: not dialog.property("visible"), 1500)
+    assert ("message", "bob@example.org", "hello", True) in ui.backend.sent
+    win.close()
+    wait_until(lambda: "bob@example.org" not in ui.windows, 1000)
+    assert qml_messages == []

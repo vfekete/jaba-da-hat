@@ -51,6 +51,8 @@ class MockBackend(Backend):
         self._timer.setInterval(MOCK_TICK_MS)
         self._timer.timeout.connect(self._tick)
         self.sent: list[tuple] = []  # outgoing stanzas, for tests
+        self._approved: set[str] = set()  # chats whose devices were approved (until the window closes)
+        self._held: dict[str, tuple[str, str]] = {}  # trust request id → message waiting for approval
         self.blocked: set[str] = set()
 
     # ---- helpers -----------------------------------------------------
@@ -106,6 +108,17 @@ class MockBackend(Backend):
 
     # ---- messaging ---------------------------------------------------
     def send_message(self, jid: str, body: str, encrypt: bool) -> None:
+        if encrypt and not self.can_encrypt(jid):
+            self.notice.emit(jid, f"⚠ Message not sent: {jid} has no OMEMO devices (mock).")
+            return
+        if encrypt and jid not in self._approved:
+            rid = f"r{random.randrange(1 << 30)}"
+            self._held[rid] = (jid, body)
+            self.trustRequested.emit(jid, rid, self._mock_devices(jid))
+            return
+        self._deliver(jid, body, encrypt)
+
+    def _deliver(self, jid: str, body: str, encrypt: bool) -> None:
         self.sent.append(("message", jid, body, encrypt))
         if not self._online:
             return
@@ -119,6 +132,37 @@ class MockBackend(Backend):
 
     def can_encrypt(self, jid: str) -> bool:
         return not jid.startswith("grace@")  # one contact without OMEMO devices, to test the UI
+
+    def refresh_encryption(self, jid: str) -> None:
+        self.encryptionAvailable.emit(jid, self.can_encrypt(jid))
+
+    @staticmethod
+    def _mock_devices(jid: str) -> dict:
+        rnd = random.Random(jid)
+
+        def fp():
+            return " ".join(f"{rnd.getrandbits(32):08x}" for _ in range(8))
+
+        return {"own": fp(), "devices": [
+            {"id": f"{jid}/1111", "jid": jid, "device": 1111, "label": "Phone", "own": False, "fingerprint": fp()},
+            {"id": f"{jid}/2222", "jid": jid, "device": 2222, "label": "", "own": False, "fingerprint": fp()},
+            {"id": "me@example.org/3333", "jid": "me@example.org", "device": 3333, "label": "Laptop", "own": True,
+             "fingerprint": fp()},
+        ]}
+
+    def answer_trust(self, rid: str, approved: list | None) -> None:
+        held = self._held.pop(rid, None)
+        if held is None:
+            return
+        jid, body = held
+        if not approved or not any(i.startswith(jid + "/") for i in approved):
+            self.notice.emit(jid, "⚠ Message not sent: no device of the contact was approved.")
+            return
+        self._approved.add(jid)
+        self._deliver(jid, body, True)
+
+    def forget_trust(self, jid: str) -> None:
+        self._approved.discard(jid)
 
     def simulate_incoming_message(self, jid: str | None = None) -> None:
         jid = jid or random.choice([j for j, c in self._roster.items() if c["presence"] != "offline"])
@@ -171,7 +215,7 @@ class MockBackend(Backend):
         self._transfers[tid] = {"jid": jid, "size": size, "done": 0, "state": "offered", "dest": "", "incoming": True}
         self.fileOffered.emit(tid, jid, "mock-notes.txt", size)
 
-    def send_file(self, tid: str, jid: str, path: str) -> None:
+    def send_file(self, tid: str, jid: str, path: str, encrypt: bool = False) -> None:
         try:
             size = os.path.getsize(path)
         except OSError as exc:

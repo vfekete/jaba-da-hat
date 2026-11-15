@@ -338,6 +338,56 @@ Nothing unverified is renamed from `.part` to its real name.
 The same request path resumes a download after the connection broke. A send
 that failed is resumed by offering the file again.
 
+## src/jaba_da_hat/backend/e2ee.py
+
+### [22] OMEMO: per-window trust, what is stored, and "never silently plain"
+
+**Library.** Encryption is not written here: python-omemo (Syndace) does the
+X3DH / Double Ratchet work, slixmpp-omemo connects it to slixmpp. slixmpp-omemo
+currently enables the legacy namespace (`eu.siacs.conversations.axolotl`),
+which is what Conversations, Dino and Gajim speak; OMEMO 2 (`urn:xmpp:omemo:2`)
+waits for slixmpp to support Stanza Content Encryption (XEP-0420).
+
+**Trust (decided).** No device is ever trusted automatically (blind trust
+before verification is off). When a message is about to be encrypted for
+devices nobody approved *in this chat window*, the window shows their
+fingerprints and nothing is pre-selected; only ticked devices can read the
+message, and "Don't send" cancels it. The approvals belong to that window:
+before every encryption we reset each device's trust to what the window
+decided (approved / rejected / undecided), so another window, or the same
+contact after the window was closed, asks again. Own other devices are
+treated the same way. Trust decisions are kept in memory only: the storage
+class routes every `/trust/…` key to a dict that is never written.
+
+**Stored on disk** (`~/.local/share/jaba-da-hat/omemo/<hash>.json`, 0600, in
+a 0700 directory, written atomically with fsync): the device's private
+identity key, pre-keys and the ratchet sessions. They must survive restarts:
+without them the device id changes at every start (contacts would see a new
+device each time) and messages encrypted while we were offline could never be
+decrypted. No message content is stored.
+
+**Never silently plain.** The lock in the chat window is what the user
+*wants*. It starts on (setting "encryption by default") before we know whether
+the contact has OMEMO devices, so there's no window of time in which the first
+message could slip out unencrypted. If encryption is on but impossible (no
+devices, all rejected, offline), the message is *not sent* and the chat says
+why; only switching the lock off sends plain text.
+
+**Incoming.** Encrypted messages are decrypted whatever the trust state (the
+library allows it). A message from a device not approved in this window is
+shown with a one-time line naming the device and its fingerprint.
+
+**Files.** In an encrypted chat a file must not reach the server readable.
+Jingle IBB passes through the server and plain HTTP Upload stores the file
+as is, so encrypted chats use XEP-0454 only: the file is encrypted with
+AES-256-GCM (random key, 12-byte IV) into a private temp file, the ciphertext
+is uploaded, and the link `aesgcm://host/path#<iv><key>` travels inside the
+OMEMO message. The fragment is never sent to the web server. The upload slot
+and the device approval come *before* the upload, so cancelling the approval
+uploads nothing. Receiving downloads the ciphertext (resumable), then decrypts
+and checks the GCM tag in a worker thread; an altered file is deleted, not
+kept.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

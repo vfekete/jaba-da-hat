@@ -24,7 +24,12 @@ class Backend(QObject):
     presenceReceived = Signal(str, str, str)  # jid, presence, status text
     # Messaging
     messageReceived = Signal(str, str, bool)  # jid, body, encrypted
-    messageSentElsewhere = Signal(str, str)  # jid, body: I wrote it on another device (XEP-0280)
+    messageSentElsewhere = Signal(str, str, bool)  # jid, body, encrypted: I wrote it on another device (XEP-0280)
+    notice = Signal(str, str)  # jid, text: a line for that chat (e.g. message not sent, unapproved device)
+    # OMEMO
+    encryptionAvailable = Signal(str, bool)  # jid, contact has devices we can encrypt to
+    # jid (chat window), request id, {"own": fingerprint, "devices": [{id, jid, device, label, own, fingerprint}]}
+    trustRequested = Signal(str, str, dict)
     chatStateReceived = Signal(str, str)  # jid, "composing" | "paused" | "active" | "gone"
     subscriptionRequested = Signal(str, str)  # jid, optional message
     # File transfer
@@ -58,6 +63,15 @@ class Backend(QObject):
     def can_encrypt(self, jid: str) -> bool:
         raise NotImplementedError
 
+    def refresh_encryption(self, jid: str) -> None:
+        """Look up whether *jid* has OMEMO devices; answers with ``encryptionAvailable``."""
+
+    def answer_trust(self, rid: str, approved: list | None) -> None:
+        """Answer ``trustRequested``: ids of the approved devices, or None to cancel (the message is not sent)."""
+
+    def forget_trust(self, jid: str) -> None:
+        """The chat window of *jid* closed: its device approvals end."""
+
     # ---- roster ------------------------------------------------------
     def add_contact(self, jid: str, name: str, groups: list[str]) -> None:
         raise NotImplementedError
@@ -76,7 +90,7 @@ class Backend(QObject):
         raise NotImplementedError
 
     # ---- file transfer -----------------------------------------------
-    def send_file(self, tid: str, jid: str, path: str) -> None:
+    def send_file(self, tid: str, jid: str, path: str, encrypt: bool = False) -> None:
         raise NotImplementedError
 
     def accept_file(self, tid: str, dest_path: str) -> None:

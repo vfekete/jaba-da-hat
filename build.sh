@@ -52,6 +52,7 @@ PY
 OUT="build/$APP-$VERSION"
 echo "building $OUT …"
 # QML and icons are loaded by path at runtime, so they're bundled explicitly — see docs/comments-details.md [6].
+# xmlschema (OMEMO stanza validation) reads its XSD files at runtime, so its data goes in too.
 uv run --quiet python -m nuitka \
     --mode=app \
     --python-flag=-m \
@@ -59,6 +60,7 @@ uv run --quiet python -m nuitka \
     --include-qt-plugins=qml,platformthemes,wayland-shell-integration,wayland-decoration-client,wayland-graphics-integration-client,platforminputcontexts \
     --include-package=jaba_da_hat \
     $XMPP_MODULES \
+    --include-package-data=xmlschema \
     --include-data-dir="$PKG/qml=jaba_da_hat/qml" \
     --include-data-dir="$PKG/resources=jaba_da_hat/resources" \
     --linux-app-icon=assets/app-icon.png \

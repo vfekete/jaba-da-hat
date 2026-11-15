@@ -58,12 +58,12 @@ ApplicationWindow {
                 font.pixelSize: 18
                 checkable: true
                 checked: session.encrypted
-                enabled: session.canEncrypt
                 onToggled: session.encrypted = checked
                 ToolTip.visible: hovered
-                ToolTip.text: !session.canEncrypt ? qsTr("This contact has no OMEMO devices — encryption unavailable")
-                             : session.encrypted ? qsTr("OMEMO encryption on — click to turn off")
-                                                 : qsTr("Not end-to-end encrypted — click to turn on OMEMO")
+                ToolTip.text: session.encrypted
+                    ? (session.canEncrypt ? qsTr("OMEMO encryption on — click to turn off")
+                                          : qsTr("Encryption on, but no OMEMO devices known for this contact: nothing is sent until they appear or you turn encryption off"))
+                    : qsTr("Not end-to-end encrypted — click to turn on OMEMO")
             }
             ToolButton {
                 text: "📎"
@@ -91,6 +91,93 @@ ApplicationWindow {
         standardButtons: Dialog.Yes | Dialog.No
         Label { text: qsTr("Closing this chat cancels its running file transfers. Close anyway?"); wrapMode: Text.Wrap; width: 280 }
         onAccepted: { win.confirmedClose = true; win.close() }
+    }
+
+    // OMEMO: every device must be approved in this window; nothing is pre-selected — see docs/comments-details.md [22].
+    Dialog {
+        id: trustDialog
+        property var req: session.trustRequest
+        property var picked: ({})
+        onReqChanged: picked = ({})
+        Connections {
+            target: session
+            function onTrustChanged() {
+                if ((session.trustRequest.devices ?? []).length > 0) trustDialog.open()
+                else trustDialog.close()
+            }
+        }
+        anchors.centerIn: parent
+        width: Math.min(win.width - 24, 460)
+        height: Math.min(win.height - 24, implicitHeight)
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        title: qsTr("Approve encryption devices")
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("Compare each fingerprint with the one shown on that device (in person or over another channel). Only approved devices can read your messages in this chat; the approval ends when this window closes.")
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredHeight: Math.min(devCol.implicitHeight, 300)
+                clip: true
+                ColumnLayout {
+                    id: devCol
+                    width: trustDialog.availableWidth
+                    Repeater {
+                        model: trustDialog.req.devices ?? []
+                        delegate: CheckBox {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            checked: false
+                            onToggled: { trustDialog.picked[modelData.id] = checked; trustDialog.picked = trustDialog.picked }
+                            contentItem: ColumnLayout {
+                                spacing: 0
+                                anchors.left: parent.indicator.right
+                                anchors.leftMargin: 8
+                                anchors.right: parent.right
+                                Label {
+                                    text: (modelData.own ? qsTr("Your other device") : modelData.jid)
+                                          + (modelData.label ? " · " + modelData.label : "") + " · #" + modelData.device
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Label {
+                                    text: modelData.fingerprint
+                                    font.family: "monospace"
+                                    font.pixelSize: 12
+                                    wrapMode: Text.WrapAnywhere
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WrapAnywhere
+                font.pixelSize: 12
+                opacity: 0.8
+                text: qsTr("This device: ") + (trustDialog.req.own ?? "")
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button { text: qsTr("Don't send"); flat: true; onClicked: session.cancelTrust() }
+                Button {
+                    text: qsTr("Approve selected and send")
+                    highlighted: true
+                    enabled: Object.keys(trustDialog.picked).some(k => trustDialog.picked[k])
+                    onClicked: session.approveDevices(Object.keys(trustDialog.picked).filter(k => trustDialog.picked[k]))
+                }
+            }
+        }
     }
 
     DropArea {

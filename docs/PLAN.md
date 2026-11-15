@@ -1,6 +1,6 @@
 # jaba-da-hat — plan and XMPP feasibility
 
-Status: **0.3.0 — file transfer (Jingle FT over IBB, HTTP Upload). Next: 0.4.0 OMEMO.** OMEMO (0.4.0) still runs only on the mock backend.
+Status: **0.4.0 implemented — OMEMO messages and encrypted files, per-window device approval; waiting for your manual test.** OMEMO (0.4.0) still runs only on the mock backend.
 
 Decisions made so far (2026-11-15):
 

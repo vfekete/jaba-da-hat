@@ -37,7 +37,7 @@ class Recorder:
         self.events: list[tuple] = []
         for name in ("stateChanged", "error", "loginRejected", "rosterReceived", "contactUpdated", "contactRemoved",
                      "presenceReceived", "messageReceived", "messageSentElsewhere", "chatStateReceived", "subscriptionRequested", "fileOffered", "transferProgress",
-                     "transferStateChanged", "transferInfo"):
+                     "transferStateChanged", "transferInfo", "notice", "encryptionAvailable", "trustRequested"):
             getattr(backend, name).connect(lambda *a, n=name: self._on(n, a))
 
     def _on(self, name, args):
@@ -197,9 +197,9 @@ def test_block(pair):
 def test_encrypted_send_refused_without_omemo(pair):
     me, ms, mr = pair("me")
     online(me, ms, mr)
-    me.send_message("alice@localhost", "secret", True)
-    mr.wait(lambda: mr.of("error"))
-    assert "not sent" in mr.of("error")[0][0]
+    me.send_message("nobody@localhost", "secret", True)  # an account that never logs in: no OMEMO devices
+    mr.wait(lambda: mr.of("notice"))
+    assert "not sent" in mr.of("notice")[0][1] and "no OMEMO devices" in mr.of("notice")[0][1]
 
 
 def test_carbons_from_my_other_device(pair):
@@ -209,7 +209,7 @@ def test_carbons_from_my_other_device(pair):
     online(phone, ps, pr)
     wait_until(lambda: False, 500)  # carbons are enabled right after going online
     phone.send_message("alice@localhost", "sent from the phone", False)
-    mr.wait(lambda: ("alice@localhost", "sent from the phone") in mr.of("messageSentElsewhere"))
+    mr.wait(lambda: ("alice@localhost", "sent from the phone", False) in mr.of("messageSentElsewhere"))
 
 
 def _states(r, tid):
@@ -297,7 +297,7 @@ def test_file_through_two_controllers(qapp, server, tmp_path):
     for user in ("me", "alice"):
         s = config.Settings(jid=f"{user}@localhost", password=PASSWORD, server="127.0.0.1", port=PORT,
                             download_dir=str(tmp_path / user / "dl"), start_at_login=False,
-                            notification_style="gnome")
+                            notification_style="gnome", use_encryption=False)  # the plain path
         c = AppController(XmppBackend(ca_file=server), s, tmp_path / f"{user}.json")
         c.login()
         ctls.append(c)
@@ -447,3 +447,114 @@ def test_offline_contact_gets_http_upload(pair, tmp_path):
     ar.wait(lambda: _states(ar, "j6")[-1:] in (["completed"], ["failed"]))
     assert _states(ar, "j6")[-1] == "completed", ar.of("transferStateChanged")
     assert ("j6", {"can_pause": False}) in ar.of("transferInfo")
+
+
+
+# ---------------------------------------------------------------- OMEMO
+
+def omemo_ready(b, r, peer):
+    """Ask until the peer's OMEMO device list is visible (it is published shortly after login)."""
+    for _ in range(20):
+        b.refresh_encryption(peer)
+        if wait_until(lambda: (peer, True) in r.of("encryptionAvailable"), 500):
+            return
+    raise AssertionError(r.events)
+
+
+def answer_next_trust(b, r, n, approve=True):
+    r.wait(lambda: len(r.of("trustRequested")) > n)
+    window, rid, req = r.of("trustRequested")[n]
+    b.answer_trust(rid, [d["id"] for d in req["devices"]] if approve else None)
+    return window, req
+
+
+def test_omemo_round_trip_with_per_window_trust(me_alice, tmp_path):
+    from jaba_da_hat.backend.e2ee import storage_path
+
+    me, mr, al, ar = me_alice
+    omemo_ready(me, mr, "alice@localhost")
+    me.send_message("alice@localhost", "top secret", True)
+    window, req = answer_next_trust(me, mr, 0)
+    assert window == "alice@localhost" and req["own"]
+    assert any(d["jid"] == "alice@localhost" for d in req["devices"])
+    assert all(len(d["fingerprint"].replace(" ", "")) == 64 for d in req["devices"])
+    ar.wait(lambda: ("me@localhost", "top secret", True) in ar.of("messageReceived"))
+    ar.wait(lambda: any("haven't approved" in n[1] for n in ar.of("notice")))  # alice never approved me
+
+    me.send_message("alice@localhost", "again", True)  # same window: no question
+    ar.wait(lambda: ("me@localhost", "again", True) in ar.of("messageReceived"))
+    assert len(mr.of("trustRequested")) == 1
+
+    me.forget_trust("alice@localhost")  # window closed
+    me.send_message("alice@localhost", "never", True)
+    answer_next_trust(me, mr, 1, approve=False)
+    mr.wait(lambda: any("not sent" in n[1] for n in mr.of("notice")))
+    wait_until(lambda: False, 800)
+    assert ("me@localhost", "never", True) not in ar.of("messageReceived")
+
+    # keys are on disk (0600), trust decisions are not
+    f = storage_path("me@localhost")
+    assert f.stat().st_mode & 0o777 == 0o600
+    assert "/trust/" not in f.read_text()
+
+
+def test_omemo_keys_survive_restart(pair):
+    me, ms, mr = pair("me")
+    al, as_, ar = pair("alice")
+    online(me, ms, mr)
+    online(al, as_, ar)
+    friends(al, ar, "alice@localhost", me, mr, "me@localhost")
+    omemo_ready(al, ar, "me@localhost")
+    al.send_message("me@localhost", "before restart", True)
+    answer_next_trust(al, ar, 0)
+    mr.wait(lambda: ("alice@localhost", "before restart", True) in mr.of("messageReceived"))
+
+    me.logout()
+    me.shutdown()
+    me2, ms2, mr2 = pair("me")  # same data dir: same identity and sessions
+    online(me2, ms2, mr2)
+    al.send_message("me@localhost", "after restart", True)  # alice's window is still open: no question
+    mr2.wait(lambda: ("alice@localhost", "after restart", True) in mr2.of("messageReceived"))
+    assert len(ar.of("trustRequested")) == 1
+
+
+
+def test_encrypted_file_xep0454(me_alice, tmp_path):
+    import ssl
+    import urllib.request
+
+    me, mr, al, ar = me_alice
+    omemo_ready(me, mr, "alice@localhost")
+    data = b"confidential " * 5000
+    src = tmp_path / "contract.pdf"
+    src.write_bytes(data)
+    me.send_file("e1", "alice@localhost", str(src), True)
+    answer_next_trust(me, mr, len(mr.of("trustRequested")))
+    mr.wait(lambda: _states(mr, "e1")[-1:] in (["completed"], ["failed"]), 15000)
+    assert _states(mr, "e1")[-1] == "completed", mr.of("transferStateChanged")
+
+    ar.wait(lambda: any(o[2] == "contract.pdf" for o in ar.of("fileOffered")))
+    tid, jid, name, _ = next(o for o in ar.of("fileOffered") if o[2] == "contract.pdf")
+    assert (jid, name) == ("me@localhost", "contract.pdf")
+    url = al._files[tid]["url"]
+    assert url.startswith("https://") and "#" not in url  # key and IV never go to the web server
+    ctx = ssl.create_default_context(cafile=str(ROOT / "build/prosody/ca.crt"))
+    stored = urllib.request.urlopen(url, context=ctx).read()
+    assert len(stored) == len(data) + 16 and b"confidential" not in stored  # the server holds ciphertext
+
+    dest = tmp_path / "dl" / "contract.pdf"
+    al.accept_file(tid, str(dest))
+    ar.wait(lambda: _states(ar, tid)[-1:] in (["completed"], ["failed"]), 15000)
+    assert _states(ar, tid)[-1] == "completed", ar.of("transferStateChanged")
+    assert dest.read_bytes() == data
+    assert not list((tmp_path / "dl").glob("*.encrypted*"))
+
+
+def test_encrypted_chat_never_uses_jingle_or_plain_upload(me_alice, tmp_path):
+    me, mr, al, ar = me_alice
+    src = tmp_path / "x.txt"
+    src.write_text("x")
+    me.send_file("e2", "nobody@localhost", str(src), True)  # no OMEMO devices
+    mr.wait(lambda: "failed" in _states(mr, "e2"))
+    detail = [e[2] for e in mr.of("transferStateChanged") if e[0] == "e2" and e[1] == "failed"][0]
+    assert "no OMEMO devices" in detail

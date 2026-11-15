@@ -22,6 +22,7 @@ from xml.etree import ElementTree as ET
 
 from PySide6.QtCore import Qt, Signal, Slot
 
+from jaba_da_hat.backend import aesgcm
 from jaba_da_hat.backend.base import Backend
 from jaba_da_hat.backend.httpfiles import HttpFiles, part_path, trust_ca_file
 from jaba_da_hat.config import Settings, split_server
@@ -45,6 +46,14 @@ def shared_file_url(msg) -> str:
     body = (msg["body"] or "").strip()
     if url.lower().startswith(("https://", "http://")) and (not body or body == url):
         return url
+    return ""
+
+
+def single_url(body: str) -> str:
+    """The URL when an (already decrypted) message body is nothing but one https or aesgcm link."""
+    body = (body or "").strip()
+    if body and " " not in body and "\n" not in body and body.lower().startswith(("https://", "aesgcm://")):
+        return body
     return ""
 
 
@@ -78,7 +87,10 @@ class XmppBackend(Backend):
         self._http = HttpFiles(self)
         self._files: dict[str, dict] = {}
         self._link_ids = itertools.count(1)
+        self._crypto_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="jdh-decrypt")
         self.use_jingle = True  # False: always HTTP Upload (tests)
+        self._encryptable: dict[str, bool] = {}  # main thread: contact has OMEMO devices
+        self.encryptionAvailable.connect(self._on_encryption_available)  # before the controller's slot
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, name="xmpp", daemon=True)
         self._thread.start()
@@ -100,8 +112,9 @@ class XmppBackend(Backend):
         self._post.emit(lambda: signal.emit(*args))
 
     def _call(self, fn, *args) -> None:
-        """Run *fn* on the XMPP loop thread."""
-        self._loop.call_soon_threadsafe(fn, *args)
+        """Run *fn* on the XMPP loop thread (ignored after shutdown)."""
+        if not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(fn, *args)
 
     def _spawn(self, coro, failure: str) -> None:
         """Run a coroutine on the loop; report an exception as a user-visible error."""
@@ -184,7 +197,7 @@ class XmppBackend(Backend):
                 t.cancel()
             await asyncio.gather(*rest, return_exceptions=True)
 
-        if not self._thread.is_alive():
+        if not self._thread.is_alive() or self._loop.is_closed():
             return
         try:
             asyncio.run_coroutine_threadsafe(close(), self._loop).result(timeout)
@@ -204,10 +217,25 @@ class XmppBackend(Backend):
 
     # ---- messaging ---------------------------------------------------
     def send_message(self, jid: str, body: str, encrypt: bool) -> None:
-        if encrypt:  # never fall back to plain text silently
-            self.error.emit(f"Message to {jid} not sent: OMEMO encryption is not available yet.")
+        if encrypt:  # never falls back to plain text — see docs/comments-details.md [22]
+            self._call(self._send_encrypted, jid, body)
+        else:
+            self._call(self._send_message, jid, body)
+
+    def _send_encrypted(self, jid: str, body: str) -> None:
+        c = self._client
+        if c is None or not c.is_connected():
+            self._emit(self.notice, jid, "Message not sent: you are offline.")
             return
-        self._call(self._send_message, jid, body)
+        state = "active" if self._settings and self._settings.send_typing else ""
+
+        async def run():
+            try:
+                await c.omemo.send(jid, body, state)
+            except Exception as exc:  # noqa: BLE001
+                self._emit(self.notice, jid, f"⚠ Message not sent: {_describe(exc)}")
+
+        asyncio.ensure_future(run())
 
     def _send_message(self, jid: str, body: str) -> None:
         c = self._online_client(f"Message to {jid} not sent: you are offline.")
@@ -229,7 +257,29 @@ class XmppBackend(Backend):
             msg.send()
 
     def can_encrypt(self, jid: str) -> bool:
-        return False  # OMEMO arrives in 0.4.0
+        return self._encryptable.get(jid, False)
+
+    def _on_encryption_available(self, jid: str, available: bool) -> None:
+        self._encryptable[jid] = available
+
+    def refresh_encryption(self, jid: str) -> None:
+        def run():
+            c = self._client
+            if c is None or not c.is_connected():
+                return
+
+            async def check():
+                self._emit(self.encryptionAvailable, jid, await c.omemo.available(jid))
+
+            asyncio.ensure_future(check())
+
+        self._call(run)
+
+    def answer_trust(self, rid: str, approved: list | None) -> None:
+        self._call(lambda: self._client is not None and self._client.omemo.answer(rid, approved))
+
+    def forget_trust(self, jid: str) -> None:
+        self._call(lambda: self._client is not None and self._client.omemo.forget(jid))
 
     def _online_client(self, why_not: str):
         c = self._client
@@ -301,8 +351,15 @@ class XmppBackend(Backend):
     def _offer_link(self, jid: str, url: str) -> None:
         """Main thread: a contact shared a file link. Nothing is fetched until it is accepted."""
         tid = f"link{next(self._link_ids)}"
-        self._files[tid] = {"kind": "in", "jid": jid, "url": url, "dest": "", "state": "offered"}
-        self.fileOffered.emit(tid, jid, file_name_from_url(url), 0)
+        f = {"kind": "in", "jid": jid, "url": url, "dest": "", "state": "offered"}
+        if aesgcm.is_aesgcm(url):
+            try:
+                f["url"], f["iv"], f["key"] = aesgcm.parse(url)
+            except ValueError:
+                self.messageReceived.emit(jid, url, True)  # not a valid encrypted link: show it as text
+                return
+        self._files[tid] = f
+        self.fileOffered.emit(tid, jid, file_name_from_url(f["url"]), 0)
 
     def _offer_jingle(self, tid: str, jid: str, name: str, size: int) -> None:
         """Main thread: a contact offers a file over Jingle."""
@@ -342,7 +399,30 @@ class XmppBackend(Backend):
                 self.transferInfo.emit(tid, {"size": total})
             self.transferProgress.emit(tid, done)
 
-        self._http.download(tid, f["url"], f["dest"], progress, lambda st, detail: self._file_state(tid, st, detail))
+        if "key" not in f:
+            self._http.download(tid, f["url"], f["dest"], progress, lambda st, detail: self._file_state(tid, st, detail))
+            return
+        enc = f["dest"] + ".encrypted"  # ciphertext (resumable); decrypted into dest when complete
+
+        def done(state: str, detail: str) -> None:
+            if state != "completed":
+                self._file_state(tid, state, detail)
+                return
+            self._file_state(tid, "active", "Decrypting…")
+            fut = self._crypto_pool.submit(aesgcm.decrypt_file, enc, f["dest"], f["iv"], f["key"])
+
+            def finished(_f) -> None:
+                exc = _f.exception()
+                Path(enc).unlink(missing_ok=True)
+                if exc is None:
+                    self._post.emit(lambda: self._file_state(tid, "completed", f["dest"]))
+                else:
+                    why = "The file could not be decrypted — it was altered or damaged, and was deleted."
+                    self._post.emit(lambda: self._file_state(tid, "failed", why))
+
+            fut.add_done_callback(finished)
+
+        self._http.download(tid, f["url"], enc, progress, done)
 
     def decline_file(self, tid: str) -> None:
         f = self._files.get(tid)
@@ -360,6 +440,7 @@ class XmppBackend(Backend):
         elif not self._http.abort(tid, "cancelled"):
             if f["kind"] == "in" and f["dest"]:
                 part_path(f["dest"]).unlink(missing_ok=True)
+                part_path(f["dest"] + ".encrypted").unlink(missing_ok=True)
             self._file_state(tid, "cancelled")
 
     def pause_transfer(self, tid: str) -> None:
@@ -376,7 +457,7 @@ class XmppBackend(Backend):
         elif f is not None and f["kind"] == "in" and f["state"] in ("paused", "failed") and not self._http.busy(tid):
             self._download(tid)
 
-    def send_file(self, tid: str, jid: str, path: str) -> None:
+    def send_file(self, tid: str, jid: str, path: str, encrypt: bool = False) -> None:
         try:
             size = os.path.getsize(path)
         except OSError as exc:
@@ -385,7 +466,39 @@ class XmppBackend(Backend):
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
         self._files[tid] = {"kind": "out", "jid": jid, "path": path, "size": size, "type": ctype, "state": "pending"}
         self._file_state(tid, "pending", "Preparing…")
-        self._call(self._route_send, tid, jid, path, size, ctype)
+        if encrypt:  # an encrypted chat never sends a file the server could read — see [22]
+            self.transferInfo.emit(tid, {"can_pause": False})
+            self._call(self._send_encrypted_file, tid, jid, path)
+        else:
+            self._call(self._route_send, tid, jid, path, size, ctype)
+
+    def _send_encrypted_file(self, tid: str, jid: str, path: str) -> None:
+        c = self._client
+        if c is None or not c.is_connected():
+            self._post.emit(lambda: self._file_state(tid, "failed", "You are offline."))
+            return
+
+        async def run():
+            tmp = ""
+            try:
+                if not await c.omemo.devices(jid):
+                    raise UploadError(f"{jid} has no OMEMO devices; turn encryption off to send the file unencrypted.")
+                self._post.emit(lambda: self._file_state(tid, "pending", "Encrypting…"))
+                tmp, iv, key, size = await asyncio.get_running_loop().run_in_executor(None, aesgcm.encrypt_file, path)
+                put_url, headers, get_url = await c.request_upload_slot(os.path.basename(path), size,
+                                                                       "application/octet-stream")
+                self._post.emit(lambda: self._file_state(tid, "pending", "Waiting for your approval of the devices…"))
+                stanza = await c.omemo.prepare(jid, aesgcm.make_url(get_url, iv, key))
+            except Exception as exc:  # noqa: BLE001
+                if tmp:
+                    Path(tmp).unlink(missing_ok=True)
+                why = str(exc) if isinstance(exc, UploadError) else _describe(exc)
+                self._post.emit(lambda: self._file_state(tid, "failed", why))
+                return
+            self._post.emit(lambda: self._upload(tid, put_url, headers, get_url, source=tmp,
+                                                 after=lambda: self._call(stanza.send)))
+
+        asyncio.ensure_future(run())
 
     def _set_kind(self, tid: str, kind: str, can_pause: bool) -> None:
         f = self._files.get(tid)
@@ -428,18 +541,27 @@ class XmppBackend(Backend):
             return
         self._post.emit(lambda: self._upload(tid, put_url, headers, get_url))
 
-    def _upload(self, tid: str, put_url: str, headers: dict, get_url: str) -> None:
+    def _upload(self, tid: str, put_url: str, headers: dict, get_url: str, source: str = "", after=None) -> None:
+        """PUT the file (or its encrypted copy *source*), then share the link (or run *after*)."""
         f = self._files.get(tid)
         if f is None or f["state"] != "pending":
+            if source:
+                Path(source).unlink(missing_ok=True)
             return  # cancelled while waiting for the slot
         self._file_state(tid, "active", "")
 
         def done(state: str, detail: str) -> None:
+            if source:
+                Path(source).unlink(missing_ok=True)
             if state == "completed":
-                self._call(self._send_link, f["jid"], get_url)
+                if after is not None:
+                    after()
+                else:
+                    self._call(self._send_link, f["jid"], get_url)
             self._file_state(tid, state, detail)
 
-        self._http.upload(tid, put_url, headers, f["path"], f["type"],
+        self._http.upload(tid, put_url, headers, source or f["path"],
+                          "application/octet-stream" if source else f["type"],
                           lambda sent, _total: self.transferProgress.emit(tid, sent), done)
 
     def _send_link(self, jid: str, url: str) -> None:
@@ -495,9 +617,12 @@ def _make_client_class():
                 self.register_plugin(plugin)
             self.plugin["xep_0199"].enable_keepalive(interval=120, timeout=30)
             self.plugin["xep_0030"].add_feature("http://jabber.org/protocol/chatstates")
+            from jaba_da_hat.backend.e2ee import Omemo
             from jaba_da_hat.backend.jingle import JingleFT
 
             self.jingle = JingleFT(self, backend)
+            self.omemo = Omemo(self, backend)
+            self._msg_lock = asyncio.Lock()  # messages are handled one by one, in arrival order
 
             on = self.add_event_handler
             on("session_start", self._on_session_start)
@@ -632,35 +757,66 @@ def _make_client_class():
 
         # ---- messages ---------------------------------------------------
         def _on_message(self, msg) -> None:
-            mtype = msg["type"]
-            peer = msg["from"].bare
-            if mtype == "error":
-                cond = msg["error"]["text"] or msg["error"]["condition"]
-                self._error(f"Message to {peer} could not be delivered: {cond}")
-                return
-            if mtype not in ("chat", "normal") or peer == self.boundjid.bare:
-                return
-            link = shared_file_url(msg)
-            body = msg["body"]
-            if not body and not link:
-                return
-            archive_id = msg["stanza_id"]["id"] if msg["stanza_id"]["by"] == self.boundjid.bare else ""
-            if archive_id:
-                if archive_id in self.backend._seen_archive_ids:
-                    return
-                self.backend._seen_archive_ids.add(archive_id)
-            self._deliver(peer, body, link)
+            asyncio.ensure_future(self._process(msg))
 
-        def _deliver(self, peer: str, body: str, link: str) -> None:
-            if link:
-                self.backend._post.emit(lambda: self.backend._offer_link(peer, link))
-            else:
-                self.backend._emit(self.backend.messageReceived, peer, body, False)
+        async def _process(self, msg, archive_id: str = "") -> None:
+            async with self._msg_lock:
+                mtype = msg["type"]
+                peer = msg["from"].bare
+                if mtype == "error":
+                    cond = msg["error"]["text"] or msg["error"]["condition"]
+                    self._error(f"Message to {peer} could not be delivered: {cond}")
+                    return
+                if mtype not in ("chat", "normal", "") or peer == self.boundjid.bare:
+                    return
+                if not archive_id and msg["stanza_id"]["by"] == self.boundjid.bare:
+                    archive_id = msg["stanza_id"]["id"]
+                if archive_id:
+                    if archive_id in self.backend._seen_archive_ids:
+                        return  # already shown (live and from the archive)
+                    self.backend._seen_archive_ids.add(archive_id)
+                if self.omemo.is_encrypted(msg):
+                    try:
+                        body, notice = await self.omemo.decrypt(msg, peer)
+                    except Exception as exc:  # noqa: BLE001
+                        self._notice(peer, f"An encrypted message from {peer} could not be decrypted ({_describe(exc)}).")
+                        return
+                    link = single_url(body)
+                    if link:  # a file shared inside the encrypted chat (XEP-0454 aesgcm:// or https)
+                        self.backend._post.emit(lambda: self.backend._offer_link(peer, link))
+                    elif body:
+                        self.backend._emit(self.backend.messageReceived, peer, body, True)
+                    if notice:
+                        self._notice(peer, notice)
+                    return
+                link = shared_file_url(msg)
+                body = msg["body"]
+                if link:
+                    self.backend._post.emit(lambda: self.backend._offer_link(peer, link))
+                elif body:
+                    self.backend._emit(self.backend.messageReceived, peer, body, False)
+
+        def _notice(self, jid: str, text: str) -> None:
+            self.backend._emit(self.backend.notice, jid, text)
 
         def _on_carbon_sent(self, msg) -> None:
-            sent = msg["carbon_sent"]
-            if sent["type"] in ("chat", "normal") and sent["body"]:
-                self.backend._emit(self.backend.messageSentElsewhere, sent["to"].bare, sent["body"])
+            asyncio.ensure_future(self._process_sent(msg["carbon_sent"]))
+
+        async def _process_sent(self, sent) -> None:
+            async with self._msg_lock:
+                if sent["type"] not in ("chat", "normal"):
+                    return
+                peer = sent["to"].bare
+                body, encrypted = sent["body"], False
+                if self.omemo.is_encrypted(sent):
+                    try:
+                        body, _notice = await self.omemo.decrypt(sent, peer)
+                        encrypted = True
+                    except Exception as exc:  # noqa: BLE001
+                        log.info("cannot decrypt a message I sent from another device: %s", _describe(exc))
+                        return
+                if body:
+                    self.backend._emit(self.backend.messageSentElsewhere, peer, body, encrypted)
 
         async def upload_service(self) -> tuple[str, int]:
             """(service JID, max size or 0) of the server's HTTP Upload component; cached per connection."""
@@ -712,14 +868,9 @@ def _make_client_class():
             try:
                 async for result in self.plugin["xep_0313"].iterate(start=since, rsm={"max": MAM_PAGE}, total=MAM_LIMIT):
                     fwd = result["mam_result"]["forwarded"]["stanza"]
-                    aid = result["mam_result"]["id"]
-                    if fwd["from"].bare == me or fwd["type"] not in ("chat", "normal", ""):
-                        continue
-                    link = shared_file_url(fwd)
-                    if not (fwd["body"] or link) or aid in self.backend._seen_archive_ids:
-                        continue
-                    self.backend._seen_archive_ids.add(aid)
-                    self._deliver(fwd["from"].bare, fwd["body"], link)
+                    if fwd["from"].bare == me:
+                        continue  # what I wrote elsewhere is shown only live (carbons)
+                    await self._process(fwd, archive_id=result["mam_result"]["id"])
             except Exception as exc:  # noqa: BLE001
                 log.info("server history unavailable: %s", _describe(exc))
 

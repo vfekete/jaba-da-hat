@@ -131,7 +131,10 @@ def test_remote_typing_hidden_when_disabled(ctl):
 def test_send_and_closing_forgets_conversation(ctl):
     ctl.login()
     s = ctl.session("alice@example.org")
+    s.window_shown()
     s.send("  hi  ")
+    ids = [d["id"] for d in s.trustRequest["devices"]]  # OMEMO asks before the first encrypted message
+    s.approveDevices(ids)
     assert ("message", "alice@example.org", "hi", True) in ctl.backend.sent
     assert s.messages.rowCount() >= 2  # our message + mock reply (fast mode)
     s.windowClosed()
@@ -139,12 +142,50 @@ def test_send_and_closing_forgets_conversation(ctl):
     assert ctl.session("alice@example.org").messages.rowCount() == 0
 
 
-def test_encryption_unavailable_contact(ctl):
+def test_encryption_unavailable_contact_never_sends_plain(ctl):
     ctl.login()
     s = ctl.session("grace@example.org")
-    assert not s.canEncrypt and not s.encrypted
-    s.encrypted = True
-    assert not s.encrypted
+    assert not s.canEncrypt and s.encrypted  # the wish stays on; nothing is downgraded silently
+    s.window_shown()
+    s.send("secret")
+    assert not any(m[0] == "message" for m in ctl.backend.sent)
+    s.encrypted = False  # an explicit choice
+    s.send("not secret")
+    assert ("message", "grace@example.org", "not secret", False) in ctl.backend.sent
+
+
+def test_trust_approval_lasts_until_window_closes(ctl):
+    ctl.login()
+    s = ctl.session("alice@example.org")
+    s.window_shown()
+    s.send("one")
+    assert s.trustRequest["devices"] and s.trustRequest["own"]
+    s.approveDevices([s.trustRequest["devices"][0]["id"]])
+    assert not s.trustRequest
+    s.send("two")  # same window: no new question
+    assert not s.trustRequest
+    s.windowClosed()
+    s = ctl.session("alice@example.org")
+    s.window_shown()
+    s.send("three")  # new window: asked again
+    assert s.trustRequest
+
+
+def test_cancelled_trust_does_not_send(ctl):
+    ctl.login()
+    s = ctl.session("alice@example.org")
+    s.window_shown()
+    s.send("hidden")
+    s.cancelTrust()
+    assert not any(m[0] == "message" for m in ctl.backend.sent)
+
+
+def test_trust_request_without_open_window_is_refused(ctl):
+    ctl.login()
+    answered = []
+    ctl.backend.answer_trust = lambda rid, ids: answered.append((rid, ids))
+    ctl.backend.trustRequested.emit("alice@example.org", "r1", {"own": "x", "devices": []})
+    assert answered == [("r1", None)]
 
 
 def test_incoming_file_is_not_downloaded_until_accepted(ctl, tmp_path):

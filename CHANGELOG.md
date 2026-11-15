@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **OMEMO end-to-end encryption** (XEP-0384, legacy namespace used by Conversations, Dino and Gajim)
+  through python-omemo / slixmpp-omemo.
+- Device approval per chat window: before the first encrypted message, the window lists the
+  devices with their fingerprints (nothing pre-selected); approvals end when the window closes
+  and are never written to disk. Messages from unapproved devices are marked once in the chat.
+- Encrypted files in encrypted chats (XEP-0454 `aesgcm://`): AES-256-GCM before upload, key only
+  inside the OMEMO message; received files are authenticated before they are kept.
+- OMEMO keys and sessions are stored in `~/.local/share/jaba-da-hat/omemo/` (mode 0600).
+
+### Changed
+- The lock button means "encrypt": it starts on (setting) before the contact's devices are
+  known, and when encryption is impossible the message or file is **not sent** — it is never
+  silently sent in plain text. Turning the lock off is the only way to send unencrypted.
+- In encrypted chats files never go over Jingle or plain HTTP Upload (both readable by the server).
+
+### Security
+- New dependencies (slixmpp-omemo, omemo, oldmemo, twomemo, x3dh, doubleratchet, xeddsa,
+  cryptography, protobuf, xmlschema, pydantic and their dependencies) checked with
+  `tools/audit.sh` against OSV and PyPI: no known vulnerabilities.
+
 ## [0.3.0] — 2026-11-15
 
 File transfer: Jingle (in-band) between capable clients, HTTP Upload otherwise.

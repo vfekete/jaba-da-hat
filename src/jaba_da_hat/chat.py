@@ -17,6 +17,7 @@ class ChatSession(QObject):
     changed = Signal()
     typingChanged = Signal()
     encryptedChanged = Signal()
+    trustChanged = Signal()
     closed = Signal(str)
     raiseRequested = Signal()
 
@@ -26,7 +27,11 @@ class ChatSession(QObject):
         self._jid = jid
         self._messages = MessageModel(self)
         self._remote_typing = False
-        self._encrypted = app.settings.use_encryption and app.backend.can_encrypt(jid)
+        # What the user wants, not what is possible right now: never silently plain — see docs/comments-details.md [22].
+        self._encrypted = app.settings.use_encryption
+        self._encryption_known: bool | None = None  # contact has OMEMO devices (None = not looked up yet)
+        self._trust_rid = ""
+        self._trust_request: dict = {}
         self._local_state = "active"
         self._window_open = False
         self._idle = QTimer(self, singleShot=True, interval=PAUSED_AFTER_MS)
@@ -51,14 +56,50 @@ class ChatSession(QObject):
         return self._encrypted
 
     def _set_encrypted(self, value: bool):
-        value = bool(value) and self._app.backend.can_encrypt(self._jid)
+        value = bool(value)
         if value != self._encrypted:
             self._encrypted = value
-            self._messages.add_system("Encryption (OMEMO) enabled." if value else
-                                      "Encryption disabled — messages are protected only by TLS to the server.")
+            self._messages.add_system("Encryption (OMEMO) on." if value else
+                                      "Encryption off — messages are protected only by TLS to the server.")
+            if value and self._encryption_known is False:
+                self._warn_no_devices()
             self.encryptedChanged.emit()
 
     encrypted = Property(bool, _get_encrypted, _set_encrypted, notify=encryptedChanged)
+
+    def encryption_known(self, available: bool) -> None:
+        before = self._encryption_known
+        self._encryption_known = available
+        self.changed.emit()
+        if not available and self._encrypted and before is not False:
+            self._warn_no_devices()
+
+    def _warn_no_devices(self) -> None:
+        self._messages.add_system(f"⚠ {self.name} has no OMEMO devices, so encrypted messages can't be sent. "
+                                  "Turn encryption off (🔒) to send unencrypted.")
+
+    # ---- OMEMO device approval ---------------------------------------
+    trustRequest = Property("QVariantMap", lambda s: s._trust_request, notify=trustChanged)
+
+    def request_trust(self, rid: str, request: dict) -> None:
+        if self._trust_rid:  # an older question is superseded
+            self._app.backend.answer_trust(self._trust_rid, None)
+        self._trust_rid, self._trust_request = rid, request
+        self.trustChanged.emit()
+
+    @Slot(list)
+    def approveDevices(self, ids: list) -> None:  # noqa: N802
+        self._answer_trust([str(i) for i in ids])
+
+    @Slot()
+    def cancelTrust(self) -> None:  # noqa: N802
+        self._answer_trust(None)
+
+    def _answer_trust(self, ids) -> None:
+        rid, self._trust_rid, self._trust_request = self._trust_rid, "", {}
+        self.trustChanged.emit()
+        if rid:
+            self._app.backend.answer_trust(rid, ids)
 
     @Slot(result=int)
     def activeTransferCount(self) -> int:  # noqa: N802
@@ -124,7 +165,7 @@ class ChatSession(QObject):
         t.path = path
         self._app.register_transfer(t)
         self.add_transfer(t)
-        self._app.backend.send_file(t.tid, self._jid, path)
+        self._app.backend.send_file(t.tid, self._jid, path, self._encrypted)
 
     @Slot(QObject)
     def acceptTransfer(self, t: Transfer) -> None:  # noqa: N802
@@ -172,6 +213,8 @@ class ChatSession(QObject):
     def windowClosed(self) -> None:  # noqa: N802
         """Closing the window forgets the conversation (it is never written to disk)."""
         self._window_open = False
+        if self._trust_rid:
+            self._answer_trust(None)
         self._idle.stop()
         if self._app.settings.send_typing and self._app.connection_state == "online":
             self._app.backend.send_chat_state(self._jid, "gone")
