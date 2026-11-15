@@ -1,6 +1,6 @@
 # jaba-da-hat — plan and XMPP feasibility
 
-Status: **0.3.0 implemented — HTTP Upload, link download and Jingle FT over IBB; waiting for your manual test.** OMEMO (0.4.0) still runs only on the mock backend.
+Status: **0.3.0 — file transfer (Jingle FT over IBB, HTTP Upload). Next: 0.4.0 OMEMO.** OMEMO (0.4.0) still runs only on the mock backend.
 
 Decisions made so far (2026-11-15):
 
@@ -55,7 +55,7 @@ Legend: ✅ fully covered by a standard · 🟡 possible with caveats · 🖥 cl
 | --- | --- | --- |
 | **0.1.0** (this) | Project scaffold, tray + menu, contacts manager (multi-select, groups, drag & drop), chat window, file-transfer UI, notifications, settings, theme, autostart, `run.sh`, `build.sh`, tests — **all on a mock backend** | ✅ now |
 | **0.2.0** (done) | Real XMPP via slixmpp: TLS login, SRV, roster, presence, subscriptions (accept / decline / block), messages, chat states, carbons (XEP-0280), MAM history, stream management, ping, auto-reconnect; Prosody test server in a container | ✅ against Prosody |
-| 0.3.0 | File transfer: HTTP Upload send + OOB receive, Jingle FT send/receive (IBB + SOCKS5), ranged resume, "pause" emulation | |
+| **0.3.0** (done) | File transfer: HTTP Upload send + OOB receive, Jingle FT send/receive (IBB + SOCKS5), ranged resume, "pause" emulation | |
 | 0.4.0 | OMEMO (both namespaces), device list, fingerprint view, per-window device approval | |
 | 1.0.0 | Polish, packaging check on a clean user account | |
 

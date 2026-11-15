@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-15
+
+File transfer: Jingle (in-band) between capable clients, HTTP Upload otherwise.
+
 ### Added
 - File transfer over HTTP: sending uploads the file to the server's HTTP Upload service
   (XEP-0363) and sends the link; a received file link (XEP-0066, body = link) shows as a file
