@@ -125,11 +125,9 @@ class Tray(QObject):
             self.app.openNotifications()
 
     def _on_activated(self, reason) -> None:
-        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
-            if self.app.roster.total_unread() or self.app.windows:
-                self.app.openFirstUnread()
-            else:
-                self.app.openContacts()
+        """Left click only opens an unread chat; everything else is done from the menu."""
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) and self.app.roster.total_unread():
+            self.app.openFirstUnread()
 
     # ---- menu --------------------------------------------------------
     def rebuild_menu(self) -> None:
@@ -167,7 +165,8 @@ class Tray(QObject):
         if app.backend.is_mock:
             self._build_mock(m.addMenu("Mock / testing"))
         m.addAction("Settings…", app.openSettings)
-        m.addAction("Quit", app.quit)
+        m.addSeparator()
+        m.addAction("Close", app.quit)
 
     def _build_contacts(self, menu: QMenu) -> None:
         app = self.app

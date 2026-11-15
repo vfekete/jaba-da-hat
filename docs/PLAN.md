@@ -11,7 +11,12 @@ Decisions made so far (2026-11-15):
 | Password storage | `~/.config/jaba-da-hat/config.json`, mode `0600` |
 | XMPP library (phase 2) | `slixmpp` (asyncio) + `qasync` to share the Qt event loop |
 | UI | PySide6 + QtQuick/QML (Material style), tray menu with Qt Widgets `QMenu` |
-| Packaging | Nuitka `--mode=onefile` → `build/jdh-<SemVer>` |
+| Packaging | Nuitka onefile → `build/jdh-<SemVer>`; the binary re-registers itself when an older version is registered; `--register` / `--unregister` |
+| Platform | Ubuntu GNOME on Wayland (tray via the AppIndicator extension) |
+| OMEMO trust | Never trust automatically: every device needs your approval, and an approval lasts only until the chat window closes |
+| Server history | Fetch MAM history, show it as incoming messages, forget it when the window closes |
+| Test server (0.2.0) | Throw-away Prosody in a container |
+| Tray left click | Opens the unread chat; does nothing if there is none. Last menu item is **Close** |
 
 ## 1. Feasibility: requirement → protocol
 
@@ -25,8 +30,8 @@ Legend: ✅ fully covered by a standard · 🟡 possible with caveats · 🖥 cl
 | Contacts submenu, filter online / all | RFC 6121 §2 (roster), §4 (presence) | ✅ | |
 | Single click opens chat | — | 🖥 | |
 | File transfer with cancel / progress / pause / continue | XEP-0234 Jingle FT (+ XEP-0166, XEP-0260 SOCKS5, XEP-0261 IBB); XEP-0363 HTTP Upload | 🟡 | XEP-0234 is **Deferred** (0.19.1) but implemented by Gajim, Dino, Psi, Conversations. It has *cancel* (session-terminate) and *resume* (`<range offset=…/>`), but **no pause**: pause = terminate + later re-request with a range offset, which only works if the peer still offers the file. HTTP Upload has **cancel only**; downloads of HTTP-uploaded files can resume if the web server honours `Range`. |
-| Encrypted communication | XEP-0384 OMEMO (Experimental 0.9.1) | 🟡 | OTR is not an XMPP standard (decided: OMEMO). Many clients still speak the legacy OMEMO 0.3 namespace (`eu.siacs.conversations.axolotl`), so we need both namespaces (`python-omemo` supports both). Needs a trust policy — see open question Q2. Contacts with no OMEMO devices cannot be encrypted to; the UI already shows this. |
-| Chat kept only in memory while window open; remote left, me right | — | 🖥 | We will **not** request server archives (XEP-0313 MAM). The server may still store messages that arrive while we are offline (RFC 6121 §8.5.3) and deliver them at login — they appear as unread. |
+| Encrypted communication | XEP-0384 OMEMO (Experimental 0.9.1) | 🟡 | OTR is not an XMPP standard (decided: OMEMO). Many clients still speak the legacy OMEMO 0.3 namespace (`eu.siacs.conversations.axolotl`), so we need both namespaces (`python-omemo` supports both). Trust policy (decided): nothing is trusted automatically; you approve each device, and the approval is kept only in memory until the chat window closes. So after every reopen you are asked again. Contacts with no OMEMO devices cannot be encrypted to; the UI already shows this. |
+| Chat kept only in memory while window open; remote left, me right | XEP-0313 MAM | ✅ | Decided: history is fetched from the server archive and shown as incoming (unread) messages; nothing is stored locally, so it is forgotten when the window closes. Offline messages (RFC 6121 §8.5.3) arrive the same way. |
 | Links clickable, nothing auto-loaded | — | 🖥 | Message text is HTML-escaped and only `<a>` tags are generated (`textutil.linkify`). Images and files (incl. XEP-0066 OOB URLs) are shown as a card with a **Download** button. |
 | Add / remove contact, multi-select remove | RFC 6121 §2.4–2.5 (roster set / remove), §3 (subscribe) | ✅ | Roster remove makes the server cancel subscriptions both ways. |
 | Add / remove user-defined groups (multi-select) | RFC 6121 §2.1.2.2 `<group/>` | 🟡 | XMPP groups exist only as labels on contacts, so an **empty group cannot live on the server**. Empty groups are kept locally in the config (could later be synced via XEP-0049 private storage). Removing a group keeps its contacts. |
@@ -46,21 +51,21 @@ Legend: ✅ fully covered by a standard · 🟡 possible with caveats · 🖥 cl
 | Version | Content | Manual test by you |
 | --- | --- | --- |
 | **0.1.0** (this) | Project scaffold, tray + menu, contacts manager (multi-select, groups, drag & drop), chat window, file-transfer UI, notifications, settings, theme, autostart, `run.sh`, `build.sh`, tests — **all on a mock backend** | ✅ now |
-| 0.2.0 | Real XMPP via slixmpp: TLS login, SRV, roster, presence, subscriptions (accept / decline / block), messages, chat states, carbons (XEP-0280), stream management, ping, auto-reconnect | needs a test server (see Q5) |
+| 0.2.0 | Real XMPP via slixmpp: TLS login, SRV, roster, presence, subscriptions (accept / decline / block), messages, chat states, carbons (XEP-0280), MAM history, stream management, ping, auto-reconnect; Prosody test server in a container | ✅ against Prosody |
 | 0.3.0 | File transfer: HTTP Upload send + OOB receive, Jingle FT send/receive (IBB + SOCKS5), ranged resume, "pause" emulation | |
-| 0.4.0 | OMEMO (both namespaces), device list, fingerprint view, trust policy | |
+| 0.4.0 | OMEMO (both namespaces), device list, fingerprint view, per-window device approval | |
 | 1.0.0 | Polish, packaging check on a clean user account | |
 
 Every phase is developed on the `dev` branch; merging to `main` only after tests pass and your manual test.
 
-## 3. Open questions
+## 3. Answered questions (2026-11-15)
 
-- **Q1 — order inside groups.** The protocol cannot store a contact's position inside a group. Is it fine that the insertion line only decides the target group (contacts stay sorted by name), or should the app remember a manual order locally?
-- **Q2 — OMEMO trust.** Blind trust before verification (Conversations/Dino default: new devices are trusted until you verify one, then only verified ones) or manual approval of every new device?
-- **Q3 — offline messages / archives.** OK to ignore server archives (MAM) completely, as the "memory only" rule implies?
-- **Q4 — chat closed when a message arrives.** Currently the message is kept in memory (unread badge + notification) until you open the chat; closing the chat forgets everything. OK?
-- **Q5 — test server for phase 2.** Run a throw-away Prosody in a container (podman/docker, nothing installed system-wide), or do you have test accounts on an existing server?
-- **Q6 — tray left-click.** Currently: opens the oldest unread chat, otherwise the Contacts window. OK?
+- Q1 order inside groups: not stored, contacts stay sorted by name — **ok**.
+- Q2 OMEMO trust: never trust anything, always ask; an approval lasts only until the window closes.
+- Q3 server history: fetch it, show it as incoming messages, forget it with the window.
+- Q4 message for a closed chat: kept in memory as unread until opened — **ok**.
+- Q5 test server: Prosody (in a container).
+- Q6 tray left click: open the unread chat, otherwise do nothing; menu ends with **Close**.
 
 ## 4. Architecture (0.1.0)
 

@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- `docs/rfc/xep/xep-0313.html` (Message Archive Management), needed for fetching server history.
+- `--register` / `--unregister` command-line options (old `--install-desktop` / `--uninstall-desktop` still work).
+- At startup the binary re-registers itself when an older version is registered, so the
+  launcher and autostart entry always point to the newest binary; it never registers on its own.
+
+### Changed
+- Left click on the tray icon only opens an unread chat and otherwise does nothing; the app is
+  controlled from the menu, whose last item is now **Close** (was "Quit").
+- Plan updated with the answered questions: OMEMO devices are never trusted automatically
+  (approval lasts until the chat closes), server history (MAM) is fetched and shown as
+  incoming messages, Prosody is the test server.
+
 ## [0.1.0] — 2026-11-15
 
 First UI skeleton, running entirely on a **mock backend** (no real XMPP traffic yet), so the

@@ -11,7 +11,7 @@ No other protocols, no plugins: just XMPP done properly.
 
 ## Features
 
-- Tray icon showing your presence and unread messages; everything is reachable from its right-click menu
+- Tray icon showing your presence and unread messages; left click opens an unread chat, everything else is in the right-click menu
 - Presence: available / away / do not disturb / offline; log on / log off; automatic login and reconnect
 - Contacts submenu (only online / all), single click opens a chat
 - Chat window: remote side left, you right, clickable links, **nothing is ever auto-loaded**,
@@ -26,7 +26,7 @@ No other protocols, no plugins: just XMPP done properly.
 
 ## Requirements
 
-- Linux with GNOME (Wayland or X11). GNOME needs a tray: Ubuntu's built-in *AppIndicator*
+- Ubuntu / GNOME on Wayland (X11 works too). GNOME needs a tray: Ubuntu's built-in *AppIndicator*
   extension, or the "AppIndicator and KStatusNotifierItem Support" extension elsewhere.
 - For building or running from source: [uv](https://docs.astral.sh/uv/). Everything else
   (Python packages, Nuitka) goes into the project's `.venv`, nothing is installed system-wide.
@@ -47,9 +47,13 @@ in Settings to simulate a failed login.
 
 ```bash
 ./build.sh                  # → build/jdh-<version>, e.g. build/jdh-0.1.0
-./build/jdh-0.1.0 --install-desktop    # launcher + icon in ~/.local/share
-./build/jdh-0.1.0 --uninstall-desktop  # remove them (and the autostart entry)
+./build/jdh-0.1.0 --register     # register for your user: launcher (.desktop) + icon
+./build/jdh-0.1.0 --unregister   # remove launcher, autostart entry and icon
 ```
+
+At every start the binary checks the registered version; if an older version is registered it
+re-registers itself, so the launcher and the autostart entry point to the new binary. It never
+registers on its own.
 
 The binary is self-contained (Python, Qt and the QML files are inside). On first start it
 unpacks to `~/.cache/jaba-da-hat/<version>`, so later starts are fast.

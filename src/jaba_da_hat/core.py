@@ -409,9 +409,6 @@ class AppController(QObject):
             if c.unread:
                 self.openChat(c.jid)
                 return
-        for jid in self.windows:
-            self.openChat(jid)
-            return
 
     def _open_singleton(self, key: str, qml: str) -> None:
         win = self._singletons.get(key)

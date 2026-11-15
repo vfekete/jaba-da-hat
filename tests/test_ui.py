@@ -62,7 +62,20 @@ def test_tray_menu_builds(ui):
     titles = [a.text() for a in tray.menu.actions()]
     assert any(t.startswith("Status:") for t in titles)
     assert "Log off" in titles and "Contacts" in titles and "Settings…" in titles
+    assert titles[-1] == "Close"
     ui.logout()
     tray.rebuild_menu()
     assert "Log on" in [a.text() for a in tray.menu.actions()]
     assert not tray_pixmap("offline", 3).isNull()
+
+
+def test_tray_left_click_only_opens_unread(ui):
+    from PySide6.QtWidgets import QSystemTrayIcon
+
+    tray = Tray(ui)
+    tray._on_activated(QSystemTrayIcon.Trigger)
+    assert ui.windows == {} and ui._singletons == {}  # nothing unread → nothing happens
+    ui.backend.messageReceived.emit("bob@example.org", "hi", False)
+    tray._on_activated(QSystemTrayIcon.Trigger)
+    assert list(ui.windows) == ["bob@example.org"]
+    assert ui.roster.total_unread() == 0

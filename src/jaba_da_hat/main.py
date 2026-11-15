@@ -23,10 +23,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="use the built-in mock backend with fake contacts (the only backend in 0.x)")
     p.add_argument("--config", type=Path, help="use this settings file instead of ~/.config/jaba-da-hat/config.json")
     p.add_argument("--autostart", action="store_true", help="started by the desktop session at login")
-    p.add_argument("--install-desktop", action="store_true",
-                   help="install the launcher (.desktop) and icon for the current user, then exit")
-    p.add_argument("--uninstall-desktop", action="store_true",
-                   help="remove the launcher, autostart entry and icon, then exit")
+    p.add_argument("--register", "--install-desktop", dest="register", action="store_true",
+                   help="register the app for the current user (.desktop launcher + icon), then exit")
+    p.add_argument("--unregister", "--uninstall-desktop", dest="unregister", action="store_true",
+                   help="unregister the app (remove launcher, autostart entry and icon), then exit")
     p.add_argument("--open", choices=("contacts", "settings", "notifications"),
                    help="open a window right after start (handy for testing)")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -57,14 +57,21 @@ def main(argv: list[str] | None = None) -> int:
 
     from jaba_da_hat import autostart
 
-    if args.install_desktop:
+    if args.register:
         for p in autostart.install_desktop_entry():
             print(f"installed {p}")
         return 0
-    if args.uninstall_desktop:
-        for p in autostart.uninstall_desktop_entry():
+    if args.unregister:
+        removed = autostart.uninstall_desktop_entry()
+        for p in removed:
             print(f"removed {p}")
+        if not removed:
+            print(f"{APP_NAME} was not registered")
         return 0
+    if autostart.is_packaged():  # from source the launcher would point at the venv, so only the binary does this
+        installed = autostart.registered_version()
+        if autostart.refresh_registration() == "updated":
+            log.info("re-registered: launcher updated from %s to %s", installed or "?", __version__)
 
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QGuiApplication, QIcon

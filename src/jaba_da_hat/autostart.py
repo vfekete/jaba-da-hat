@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -23,6 +24,11 @@ def autostart_file() -> Path:
 
 def applications_file() -> Path:
     return _xdg("XDG_DATA_HOME", ".local/share") / "applications" / f"{APP_ID}.desktop"
+
+
+def is_packaged() -> bool:
+    """True when running as the Nuitka-built binary, not from source."""
+    return bool(os.environ.get("NUITKA_ONEFILE_BINARY")) or "__compiled__" in globals()
 
 
 def executable_command() -> str:
@@ -74,7 +80,7 @@ def set_enabled(enabled: bool) -> None:
 
 
 def install_desktop_entry() -> list[Path]:
-    """Install the launcher .desktop file and the icon into the user's XDG data dir."""
+    """Register: install the launcher .desktop file and the icon into the user's XDG data dir."""
     written = []
     data = _xdg("XDG_DATA_HOME", ".local/share")
     for size in (64, 128, 256):
@@ -91,7 +97,42 @@ def install_desktop_entry() -> list[Path]:
     return written
 
 
+def parse_version(text: str) -> tuple[int, ...]:
+    """'1.2.3' / '1.2.3-rc1' → (1, 2, 3); unparsable → ()."""
+    m = re.match(r"\s*(\d+)\.(\d+)\.(\d+)", text or "")
+    return tuple(int(x) for x in m.groups()) if m else ()
+
+
+def registered_version() -> str | None:
+    """Version recorded in the installed launcher, or None if the app is not registered."""
+    try:
+        text = applications_file().read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r"^X-AppVersion=(.*)$", text, re.M)
+    return m.group(1).strip() if m else ""
+
+
+def refresh_registration(current: str = __version__) -> str:
+    """Re-register if an older version is registered. Returns "updated", "current", "newer" or "unregistered".
+
+    Never registers on its own — that is what --register is for.
+    """
+    installed = registered_version()
+    if installed is None:
+        return "unregistered"
+    have, want = parse_version(installed), parse_version(current)
+    if have and have >= want:
+        return "current" if have == want else "newer"
+    autostart_was_on = is_enabled()
+    install_desktop_entry()
+    if autostart_was_on:
+        set_enabled(True)  # its Exec= must point at the new binary too
+    return "updated"
+
+
 def uninstall_desktop_entry() -> list[Path]:
+    """Unregister: remove launcher, autostart entry and icons."""
     removed = []
     data = _xdg("XDG_DATA_HOME", ".local/share")
     candidates = [applications_file(), autostart_file()]

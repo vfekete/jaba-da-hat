@@ -61,4 +61,4 @@ rm -rf "$WORK"
 # 6. smoke test: the binary must at least report its version
 "./$OUT" --version
 echo "done: $OUT  ($(du -h "$OUT" | cut -f1))"
-echo "install launcher + icon for your user with:  ./$OUT --install-desktop"
+echo "install launcher + icon for your user with:  ./$OUT --register"
