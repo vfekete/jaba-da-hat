@@ -169,3 +169,36 @@ def test_clear_removes_note_icon_but_keeps_pending_requests(ui):
     assert ui.notifications.count == 1 and ui.notifications.unseen == 0
     ui.backend.simulate_subscription_request()  # something new: attention again
     assert tray._kind == "note"
+
+
+def test_tray_menu_layout_and_contact_overflow(ui):
+    from jaba_da_hat.models import Contact
+
+    tray = Tray(ui)
+    acts = tray.menu.actions()
+    titles = [a.text() for a in acts]
+    assert titles[0].startswith("Status:") and not any("—" in t for t in titles)  # no "app — JID" line
+    i_contacts, i_notes = titles.index("Contacts"), titles.index("Notifications")
+    assert i_contacts < i_notes < titles.index("Settings…") < titles.index("Log off")
+    assert acts[-2].isSeparator() and titles[-1] == "Close"
+    assert [a.isSeparator() for a in acts].count(True) >= 1
+    opts = [a.text() for a in acts[i_contacts].menu().actions()]
+    assert opts == ["Only online", "All contacts", "", "Manage contacts…"]
+    assert "Friends" in titles  # group heading directly in the menu (mock roster has groups)
+
+    many = [Contact(jid=f"user{i:02d}@example.org", name=f"User {i:02d}", groups=["Team"] if i < 15 else [],
+                    presence="available") for i in range(25)]
+    ui.roster.set_contacts(many)
+    tray.rebuild_menu()
+    acts = tray.menu.actions()
+    shown = [a.text() for a in acts if a.text().startswith("User ")]
+    assert shown == [f"User {i:02d}" for i in range(10)]
+    more = next(a for a in acts if a.text() == "…").menu()
+    rest = [a.text() for a in more.actions() if a.text().startswith("User ")]
+    assert rest == [f"User {i:02d}" for i in range(10, 25)]
+    assert "Team" in [a.text() for a in more.actions()] and "Ungrouped" in [a.text() for a in more.actions()]
+
+    ui.roster.set_contacts(many[15:])  # nobody in a group: no headings, 10 fit without "…"
+    tray.rebuild_menu()
+    titles = [a.text() for a in tray.menu.actions()]
+    assert "Ungrouped" not in titles and "…" not in titles and len([t for t in titles if t.startswith("User ")]) == 10

@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-11-16
+
+### Changed
+- Tray menu reordered: Status, then your contacts directly in the menu (under their group
+  headings, if you use groups), the **Contacts** submenu with just the options (only online /
+  all, Manage contacts…), Notifications, Settings, Log on / off, and Close below a separator.
+  The "jaba-da-hat — JID" title line is gone. After 10 contacts a **…** submenu opens the rest
+  in place (GNOME scrolls it when it is long).
+
 ## [1.0.2] — 2026-11-16
 
 ### Fixed

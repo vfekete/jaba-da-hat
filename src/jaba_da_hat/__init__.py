@@ -2,4 +2,4 @@
 
 APP_ID = "jaba-da-hat"
 APP_NAME = "jaba-da-hat"
-__version__ = "1.0.2"
+__version__ = "1.0.3"

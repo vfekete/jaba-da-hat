@@ -21,6 +21,7 @@ RESOURCES = Path(__file__).resolve().parent / "resources"
 MENU_PRESENCES = ("available", "away", "dnd", "offline")
 # 7 frames × 150 ms ≈ 1 s; each frame outlasts the panel's ~140 ms fetch cycle — see docs/comments-details.md [12].
 WIGGLE_ANGLES = (18, -18, 18, -18, 14, -14, 6)
+MENU_CONTACTS = 10  # contacts listed directly in the tray menu; the rest sit under "…"
 WIGGLE_FRAME_MS = 150
 WIGGLE_REPEAT_MS = 2000  # …then 1 s still, repeated for as long as something is waiting
 TOAST_LINES = 4
@@ -236,9 +237,6 @@ class Tray(QObject):
         app = self.app
         state = app.connection_state
 
-        header = m.addAction(f"{APP_NAME} — {app.settings.jid or 'no account'}")
-        header.setEnabled(False)
-
         status = m.addMenu(status_icon(app.presence), f"Status: {PRESENCE_LABELS[app.presence]}")
         grp = QActionGroup(status)
         for p in MENU_PRESENCES:
@@ -248,40 +246,27 @@ class Tray(QObject):
             grp.addAction(a)
             a.triggered.connect(partial(app.setPresence, p))
 
+        self._build_contact_list(m)
+        self._build_contact_options(m.addMenu("Contacts"))
+
+        n = app.notifications.count
+        self._build_notifications(m.addMenu(f"Notifications ({n})" if n else "Notifications"))
+        m.addAction("Settings…", app.openSettings)
         if state == "offline":
             m.addAction("Log on", app.login)
         elif state == "connecting":
             m.addAction("Connecting…").setEnabled(False)
         else:
             m.addAction("Log off", app.logout)
-        m.addSeparator()
-
-        self._build_contacts(m.addMenu("Contacts"))
-
-        n = app.notifications.count
-        self._build_notifications(m.addMenu(f"Notifications ({n})" if n else "Notifications"))
-        m.addSeparator()
-
         if app.backend.is_mock:
             self._build_mock(m.addMenu("Mock / testing"))
-        m.addAction("Settings…", app.openSettings)
         m.addSeparator()
         m.addAction("Close", app.quit)
 
-    def _build_contacts(self, menu: QMenu) -> None:
+    def _build_contact_list(self, menu: QMenu) -> None:
+        """Contacts right in the menu, by group; after MENU_CONTACTS a "…" submenu opens the rest in place."""
         app = self.app
         show_offline = app.settings.show_offline
-        f = menu.addMenu("Show")
-        grp = QActionGroup(f)
-        for label, value in (("Only online", False), ("All contacts", True)):
-            a = f.addAction(label)
-            a.setCheckable(True)
-            a.setChecked(show_offline == value)
-            grp.addAction(a)
-            a.triggered.connect(partial(self._set_show_offline, value))
-        menu.addAction("Manage contacts…", app.openContacts)
-        menu.addSeparator()
-
         contacts = [c for c in app.roster.contacts() if show_offline or c.online]
         if not contacts:
             menu.addAction("No contacts online" if app.roster.contacts() else "No contacts").setEnabled(False)
@@ -290,15 +275,44 @@ class Tray(QObject):
         for c in contacts:
             for g in c.groups or [UNGROUPED]:
                 by_group.setdefault(g, []).append(c)
-        for g in sorted(by_group, key=lambda x: (x == UNGROUPED, x.lower())):
-            sec = menu.addSection(g or "Ungrouped")
-            sec.setEnabled(False)
-            for c in by_group[g]:
-                label = c.display_name + (f"  ({c.unread})" if c.unread else "")
-                a = menu.addAction(status_icon(c.presence), label)
-                a.setToolTip(f"{c.jid}\n{PRESENCE_LABELS[c.presence]}" + (f": {c.status_text}" if c.status_text else ""))
-                a.triggered.connect(partial(app.openChat, c.jid))
+        entries = [(g, c) for g in sorted(by_group, key=lambda x: (x == UNGROUPED, x.lower())) for c in by_group[g]]
+        headers = any(g != UNGROUPED for g, _ in entries)  # no headings when nobody is in a group
+        if len(entries) > MENU_CONTACTS + 1:  # a "…" that hides a single contact would be silly
+            shown, rest = entries[:MENU_CONTACTS], entries[MENU_CONTACTS:]
+        else:
+            shown, rest = entries, []
+        self._add_contacts(menu, shown, headers)
+        if rest:
+            # A submenu opens inline in GNOME's tray menu (and scrolls when long); a plain item would close it.
+            more = menu.addMenu("…")
+            more.setToolTip(f"{len(rest)} more")
+            self._add_contacts(more, rest, headers)
         menu.setToolTipsVisible(True)
+
+    def _add_contacts(self, menu: QMenu, entries: list, headers: bool) -> None:
+        app = self.app
+        group = None
+        for g, c in entries:
+            if headers and g != group:
+                menu.addSection(g or "Ungrouped").setEnabled(False)
+                group = g
+            label = c.display_name + (f"  ({c.unread})" if c.unread else "")
+            a = menu.addAction(status_icon(c.presence), label)
+            a.setToolTip(f"{c.jid}\n{PRESENCE_LABELS[c.presence]}" + (f": {c.status_text}" if c.status_text else ""))
+            a.triggered.connect(partial(app.openChat, c.jid))
+        menu.setToolTipsVisible(True)
+
+    def _build_contact_options(self, menu: QMenu) -> None:
+        app = self.app
+        grp = QActionGroup(menu)
+        for label, value in (("Only online", False), ("All contacts", True)):
+            a = menu.addAction(label)
+            a.setCheckable(True)
+            a.setChecked(app.settings.show_offline == value)
+            grp.addAction(a)
+            a.triggered.connect(partial(self._set_show_offline, value))
+        menu.addSeparator()
+        menu.addAction("Manage contacts…", app.openContacts)
 
     def _set_show_offline(self, value: bool) -> None:
         self.app.settings.show_offline = value
