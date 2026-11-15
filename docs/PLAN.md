@@ -10,7 +10,7 @@ Decisions made so far (2026-11-15):
 | File transfer | **Jingle FT** (XEP-0234) preferred, **HTTP Upload** (XEP-0363) as fallback |
 | Password storage | `~/.config/jaba-da-hat/config.json`, mode `0600` |
 | XMPP library (phase 2) | `slixmpp` (asyncio) + `qasync` to share the Qt event loop |
-| UI | PySide6 + QtQuick/QML (Material style), tray menu with Qt Widgets `QMenu` |
+| UI | PySide6 + QtQuick/QML (Material style); tray = own StatusNotifierItem + dbusmenu over D-Bus (jeepney), menu built as a `QMenu` |
 | Packaging | Nuitka onefile → `build/jdh-<SemVer>`; the binary re-registers itself when an older version is registered; `--register` / `--unregister` |
 | Platform | Ubuntu GNOME on Wayland (tray via the AppIndicator extension) |
 | OMEMO trust | Never trust automatically: every device needs your approval, and an approval lasts only until the chat window closes |
@@ -79,7 +79,10 @@ backend/base.py  Backend interface (Qt signals + methods) — the only thing the
 backend/mock.py  MockBackend with fake example.org contacts; phase 2 adds backend/xmpp.py
 models.py        RosterModel, MessageModel, NotificationModel, Transfer
 chat.py          ChatSession: one open conversation (memory only), typing states, file transfer actions
-tray.py          QSystemTrayIcon, dynamic right-click menu, icon with presence dot + unread badge
+tray.py          tray behaviour: icon choice + wiggle, dynamic menu, toasts, notifications
+sni.py           own StatusNotifierItem + dbusmenu exporter + freedesktop notifications (jeepney)
+trayicons.py     vector tray icons (status circles, envelope, file, note)
+toast.py         toast helper process (XWayland, top-right)
 autostart.py     XDG autostart entry, .desktop + icon installation
 config.py        JSON settings, written atomically with mode 0600
 qml/             ChatWindow, ContactsWindow, SettingsWindow, NotificationsWindow (+ components)

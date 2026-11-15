@@ -1,4 +1,4 @@
-"""System tray icon, its right-click menu and desktop notifications."""
+"""System tray icon (own StatusNotifierItem), its menu, toasts and desktop notifications."""
 
 from __future__ import annotations
 
@@ -9,18 +9,19 @@ import logging
 
 from PySide6.QtCore import QObject, QProcess, Qt, QTimer
 from PySide6.QtGui import QActionGroup, QColor, QIcon, QPixmap
-from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QMenu
 
-from jaba_da_hat import APP_NAME, autostart, trayicons
+from jaba_da_hat import APP_ID, APP_NAME, autostart, trayicons
+from jaba_da_hat.sni import DBusTray
 from jaba_da_hat.models import PRESENCE_LABELS, UNGROUPED
 
 log = logging.getLogger(__name__)
 
 RESOURCES = Path(__file__).resolve().parent / "resources"
 MENU_PRESENCES = ("available", "away", "dnd", "offline")
-WIGGLE_ANGLES = (0, 16, 0, -16, 0, 16, 0, -16, 0, 10, 0, -10, 0)
+WIGGLE_ANGLES = (0, 16, 0, -16, 0, 16, 0, -16, 0, 12, 0, -12, 0, 0)  # 14 frames × 70 ms ≈ 1 s of wiggling
 WIGGLE_FRAME_MS = 70
-WIGGLE_REPEAT_MS = 15000  # wiggle again while something is still waiting
+WIGGLE_REPEAT_MS = 2000  # …then 1 s still, repeated for as long as something is waiting
 TOAST_LINES = 4
 
 
@@ -42,12 +43,12 @@ class Tray(QObject):
     def __init__(self, app, parent=None):
         super().__init__(parent)
         self.app = app
-        self.icon = QSystemTrayIcon(self)
         self.menu = QMenu()
-        self.menu.aboutToShow.connect(self.rebuild_menu)
-        self.icon.setContextMenu(self.menu)
-        self.icon.activated.connect(self._on_activated)
-        self.icon.messageClicked.connect(self._on_message_clicked)
+        # D-Bus side is only connected by show(), so tests never put an icon in the real panel.
+        self.sni = DBusTray(self.menu, APP_ID, APP_NAME, self)
+        self.sni.menuAboutToShow.connect(self.rebuild_menu)
+        self.sni.activated.connect(self.activate)
+        self.sni.notificationClicked.connect(self._on_notification_clicked)
         self._last_notified_jid = ""
         self._kind = "status"
         self._wiggle_step = -1
@@ -66,8 +67,18 @@ class Tray(QObject):
         self.rebuild_menu()
         self.refresh()
 
-    def show(self) -> None:
-        self.icon.show()
+    def show(self) -> bool:
+        """Connect to the session bus and register the tray icon; False without a session bus."""
+        ok = self.sni.start()
+        self.refresh()
+        return ok
+
+    @property
+    def watcher_available(self) -> bool | None:
+        return self.sni.watcher_available
+
+    def hide(self) -> None:
+        self.sni.stop()
 
     # ---- icon / tooltip ----------------------------------------------
     def refresh(self) -> None:
@@ -92,10 +103,14 @@ class Tray(QObject):
             tip += f"\n{files} incoming file(s)"
         if notes:
             tip += f"\n{notes} notification(s)"
-        self.icon.setToolTip(tip)
+        title, _, rest = tip.partition("\n")
+        self.sni.set_tooltip(title, rest)
+        if self.sni.connected:
+            self.rebuild_menu()
+            self.sni.menu_changed()  # an open menu shows the new state
 
     def _set_icon(self, angle: float) -> None:
-        self.icon.setIcon(QIcon(trayicons.render(self._kind, self.app.presence, angle)))
+        self.sni.set_icon(trayicons.render(self._kind, self.app.presence, angle))
 
     # ---- wiggle ------------------------------------------------------
     def start_wiggle(self) -> None:
@@ -127,11 +142,12 @@ class Tray(QObject):
             self._toast_events.append((title, body, jid, kind))
             self._show_toast()
         if style in ("gnome", "both"):
-            self._show_gnome(title, body)
+            self._show_gnome(title, body, [(title, body, jid, kind)])
 
-    def _show_gnome(self, title: str, body: str) -> None:
-        """Desktop notification through the freedesktop D-Bus service. See docs/comments-details.md [4]."""
-        self.icon.showMessage(title, body, QIcon(app_pixmap(128)), 8000)
+    def _show_gnome(self, title: str, body: str, events: list | None = None) -> None:
+        """freedesktop notification (lands in GNOME's message list even under Do Not Disturb). See docs/comments-details.md [4]."""
+        icon = autostart.icon_file()
+        self.sni.notify(title, body, str(icon) if icon.exists() else "", payload=events)
 
     @staticmethod
     def summarize(events: list[tuple[str, str, str, str]]) -> tuple[str, str, str]:
@@ -184,7 +200,7 @@ class Tray(QObject):
         elif code not in (1, 2):
             log.warning("toast helper failed (exit %s): %s", code, err)
             title, body, _kind = self.summarize(events)
-            self._show_gnome(title, body)
+            self._show_gnome(title, body, events)
 
     def open_events(self, events: list) -> None:
         """Clicked toast: open every chat it mentioned (several windows at once), or the notifications."""
@@ -200,18 +216,16 @@ class Tray(QObject):
             self._toast.kill()
             self._toast.waitForFinished(500)
 
-    def _on_message_clicked(self) -> None:
-        if self.app.waiting_jids():
-            self.app.openUnread()
-        elif self._last_notified_jid:
-            self.app.openChat(self._last_notified_jid)
+    def _on_notification_clicked(self, nid: int) -> None:
+        events = self.sni.notification_ids.pop(nid, None)
+        if events:
+            self.open_events(events)
         else:
-            self.app.openNotifications()
+            self.app.openUnread()
 
-    def _on_activated(self, reason) -> None:
-        """The AppIndicator extension opens the menu on left click and calls Activate on double click."""
-        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
-            self.app.openUnread()  # every waiting chat at once; nothing if none
+    def activate(self) -> None:
+        """Double click on the icon (single left click opens the menu — AppIndicator extension): open every waiting chat."""
+        self.app.openUnread()
 
     # ---- menu --------------------------------------------------------
     def rebuild_menu(self) -> None:

@@ -16,9 +16,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   banners under Do Not Disturb; Settings → Appearance chooses toast / GNOME / both.
 - Several events at once (messages from different people, file offers, notifications) are
   combined into one toast listing them all; clicking it opens every mentioned chat at once.
-- Tray icon wiggles on a new message, file or notification, and again every 15 s while it waits.
+
+- `jeepney` dependency (pure-Python D-Bus) for the own tray implementation.
+
+### Fixed
+- Busy (wait) cursor after double click or menu actions that open no window: the tray is now
+  our own StatusNotifierItem/dbusmenu implementation that does not accept activation tokens.
+- `Gdk-CRITICAL … GDK_IS_WAYLAND_WINDOW` when opening file dialogs: dialogs now go through the
+  desktop portal (`QT_QPA_PLATFORMTHEME=xdgdesktopportal`).
+- Qt Wayland `textinput` warnings flooding the terminal are filtered out.
+- Misleading "re-registered … from 0.1.0 to 0.1.0" log line.
 
 ### Changed
+- Tray icon wiggles 1 s on / 1 s off for as long as something is waiting.
+- GNOME notifications are sent directly over D-Bus; clicking one opens the chats it was about.
 - Tray icon no longer uses the app logo: coloured status circles, or an envelope (unread message),
   file (incoming file) or note (pending notification), drawn edge to edge to be as big as possible.
 - The binary also registers itself when it is not registered at all (before: only re-registered

@@ -92,16 +92,14 @@ def test_tray_icon_kind_follows_activity(ui):
 
 
 def test_tray_activate_opens_all_waiting_chats(ui):
-    from PySide6.QtWidgets import QSystemTrayIcon
-
     tray = Tray(ui)
-    tray._on_activated(QSystemTrayIcon.DoubleClick)
+    tray.activate()
     assert ui.windows == {} and ui._singletons == {}  # nothing waiting → nothing happens
     ui.backend.messageReceived.emit("bob@example.org", "hi", False)
     ui.backend.messageReceived.emit("carol@example.net", "hello", False)
     ui.backend.messageReceived.emit("bob@example.org", "still there?", False)
     ui.backend.simulate_file_offer("erin@example.org")
-    tray._on_activated(QSystemTrayIcon.DoubleClick)
+    tray.activate()
     assert set(ui.windows) == {"bob@example.org", "carol@example.net", "erin@example.org"}
     assert ui.roster.total_unread() == 0
     assert ui.sessions["bob@example.org"].messages.rowCount() == 2

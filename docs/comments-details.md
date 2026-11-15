@@ -47,18 +47,18 @@ non-onefile compiled builds.
 
 ## src/jaba_da_hat/tray.py
 
-### [4] Desktop notifications via QSystemTrayIcon.showMessage
+### [4] Desktop notifications sent with jeepney, not QtDBus
 
 GNOME's notification service (`org.freedesktop.Notifications.Notify`) expects
 the signature `(susssasa{sv}i)`. PySide6's QtDBus bindings cannot produce
 a `uint32` (`u`) argument from Python — `QDBusMessage`, `QDBusInterface`
 with introspection and `callWithArgumentList` all send `i` and the call fails
 with "does not match expected type" (tested against GNOME Shell 50.1).
-Qt's own StatusNotifierItem tray implementation calls the same D-Bus method
-from C++ with the right types, so `showMessage` produces a normal GNOME
-notification and `messageClicked` reports the default action. The drawback
-is that the click signal does not say which notification was clicked, so the
-tray remembers the JID of the latest one.
+0.1.0 first used `QSystemTrayIcon.showMessage` (Qt sends it from C++), and
+since the tray became our own D-Bus implementation ([10]) notifications are sent
+with jeepney, which marshals by explicit signature. That also gives
+the notification id back, so a click (`ActionInvoked`) opens exactly the chats
+that notification was about.
 
 ## src/jaba_da_hat/main.py
 
@@ -128,3 +128,43 @@ registration. The Desktop Entry spec allows an absolute path in `Icon=`,
 which GNOME loads directly without any cache. The themed copies are still
 installed for other consumers, and caches are refreshed best-effort without
 touching system directories.
+
+## src/jaba_da_hat/main.py (cont.)
+
+### [9] File dialogs through the desktop portal
+
+With Qt's default GNOME platform theme (`gtk3`) the QML `FileDialog`/`FolderDialog`
+are native GTK dialogs running inside our process. GTK then tries to attach
+D-Bus window properties to a parent that is a Qt Wayland surface, not a GDK
+one, and logs `Gdk-CRITICAL … gdk_wayland_window_set_dbus_properties_libgtk_only:
+assertion 'GDK_IS_WAYLAND_WINDOW (window)' failed`, which the user saw while testing.
+The `xdgdesktopportal` platform theme shows the same GNOME file chooser through
+xdg-desktop-portal (out of process), so no GTK code runs in the app. Dark-mode
+detection is unchanged (verified: both themes report `ColorScheme.Dark` on
+the target machine). `setdefault` keeps a user-provided `QT_QPA_PLATFORMTHEME`.
+
+## src/jaba_da_hat/sni.py
+
+### [10] Own StatusNotifierItem instead of QSystemTrayIcon
+
+Ubuntu's AppIndicator extension (`appIndicator.js`, `provideActivationToken`)
+creates a GNOME startup-notification sequence on every double click and
+menu-item click, and hands its XDG activation token to the item via
+`ProvideXdgActivationToken`. Qt's tray implements that method and keeps the
+token for the next window it shows. When the action opens no window (status
+change, log on/off, the contacts filter, double click with nothing waiting),
+the token is never used and GNOME shows the busy cursor until its startup
+timeout. The user reported this. Qt offers no switch to drop the method.
+If the method is missing, the extension calls `launch_failed()` (ending the
+sequence at once) and stops sending tokens for this item.
+
+So the tray is our own StatusNotifierItem + `com.canonical.dbusmenu` on a
+separate session-bus connection (jeepney, pure Python), driven from Qt's event
+loop by a `QSocketNotifier`, so no threads are needed. It deliberately answers
+`ProvideXdgActivationToken` with `UnknownMethod`. We tested that windows opened
+from the tray without a token still get focus on the target machine
+(GNOME 50, Wayland). The menu is still built as a `QMenu`; `MenuExporter`
+publishes its actions (submenus, sections, radio/check states, icons) and
+triggers the `QAction` on `clicked`, so the menu code and its tests stayed
+unchanged. Tested end-to-end against a private `dbus-daemon` with a fake
+watcher (tests/test_sni.py) and live against GNOME's watcher.

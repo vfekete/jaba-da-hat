@@ -82,19 +82,26 @@ def main(argv: list[str] | None = None) -> int:
         if result == "registered":
             log.info("registered %s %s for this user", APP_NAME, __version__)
         elif result == "updated":
-            log.info("re-registered: launcher updated from %s to %s", installed or "?", __version__)
+            if installed == __version__:
+                log.info("registration of %s refreshed (launcher entry was out of date)", __version__)
+            else:
+                log.info("re-registered: launcher updated from %s to %s", installed or "?", __version__)
 
-    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtCore import QLoggingCategory, Qt, QTimer
     from PySide6.QtGui import QGuiApplication, QIcon
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuickControls2 import QQuickStyle
-    from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+    from PySide6.QtWidgets import QApplication
 
     from jaba_da_hat import config
     from jaba_da_hat.backend.mock import MockBackend
     from jaba_da_hat.core import AppController
     from jaba_da_hat.tray import Tray, app_pixmap
 
+    # GNOME's file chooser through the desktop portal instead of GTK in-process — see docs/comments-details.md [9].
+    os.environ.setdefault("QT_QPA_PLATFORMTHEME", "xdgdesktopportal")
+    # Harmless Qt Wayland text-input chatter on every focus change.
+    QLoggingCategory.setFilterRules("qt.qpa.wayland.textinput=false")
     QGuiApplication.setDesktopFileName(APP_ID)
     QQuickStyle.setStyle("Material")
     qapp = QApplication(sys.argv[:1])
@@ -134,26 +141,22 @@ def main(argv: list[str] | None = None) -> int:
 
     server.newConnection.connect(on_peer)
 
-    waited = {"ms": 0}
+    if tray.show():
+        def check_tray():
+            if not tray.watcher_available:
+                log.warning("no system tray found (on GNOME enable the AppIndicator extension); opening Contacts window")
+                ctl.openContacts()
 
-    def show_tray():
-        if QSystemTrayIcon.isSystemTrayAvailable():
-            tray.show()
-            return
-        waited["ms"] += 1000
-        if waited["ms"] < TRAY_WAIT_MS:
-            QTimer.singleShot(1000, show_tray)
-        else:
-            log.warning("no system tray found (on GNOME install the AppIndicator extension); opening Contacts window")
-            ctl.openContacts()
-
-    show_tray()
+        QTimer.singleShot(TRAY_WAIT_MS if args.autostart else 3000, check_tray)
+    else:
+        ctl.openContacts()
 
     # Graceful exit on session logout / Ctrl+C via a self-pipe — see docs/comments-details.md [5].
     sig_notifier = _install_quit_signals(qapp)
     qapp.commitDataRequest.connect(lambda _m: ctl.shutdown())
     qapp.aboutToQuit.connect(ctl.shutdown)
     qapp.aboutToQuit.connect(tray.close_toast)
+    qapp.aboutToQuit.connect(tray.hide)
 
     if args.open:
         {"contacts": ctl.openContacts, "settings": ctl.openSettings,
