@@ -32,6 +32,20 @@ WORK=build/.nuitka
 rm -rf "$WORK"
 mkdir -p build
 
+# slixmpp loads its plugins by name at runtime: ask a client which ones it uses — see docs/comments-details.md [19].
+XMPP_MODULES=$(uv run --quiet python - <<'PY' 2>/dev/null
+import asyncio, sys
+asyncio.set_event_loop(asyncio.new_event_loop())
+from jaba_da_hat.backend import xmpp
+from jaba_da_hat.config import Settings
+xmpp._Client(None, Settings(jid="a@b", password="-"), None).init_plugins()
+names = {".".join(m.split(".")[:3]) for m in sys.modules
+         if m.startswith(("slixmpp.plugins.", "slixmpp.features.")) and m.count(".") >= 2}
+print(" ".join(f"--include-package={n}" for n in sorted(names)))
+PY
+)
+[[ $XMPP_MODULES == *xep_0030* ]] || { echo "could not list the slixmpp plugins" >&2; exit 1; }
+
 OUT="build/$APP-$VERSION"
 echo "building $OUT …"
 # QML and icons are loaded by path at runtime, so they're bundled explicitly — see docs/comments-details.md [6].
@@ -41,6 +55,7 @@ uv run --quiet python -m nuitka \
     --enable-plugin=pyside6 \
     --include-qt-plugins=qml,platformthemes,wayland-shell-integration,wayland-decoration-client,wayland-graphics-integration-client,platforminputcontexts \
     --include-package=jaba_da_hat \
+    $XMPP_MODULES \
     --include-data-dir="$PKG/qml=jaba_da_hat/qml" \
     --include-data-dir="$PKG/resources=jaba_da_hat/resources" \
     --linux-app-icon=assets/app-icon.png \

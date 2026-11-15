@@ -196,3 +196,100 @@ although our timer kept running and the panel kept reading (verified with debug
 logging of every wiggle round and every `IconPixmap` read). Frames now last
 150 ms and alternate between two tilts, so every sample the panel takes is
 visibly different from the previous one.
+
+## src/jaba_da_hat/backend/xmpp.py
+
+### [13] slixmpp runs in its own thread, not on the Qt loop through qasync
+
+The plan first said `slixmpp` + `qasync` (one shared event loop). The backend
+instead runs slixmpp on a private asyncio loop in a worker thread:
+
+- DNS SRV lookups, TCP connect and the TLS handshake never stall the tray or a
+  chat window, even on a slow or broken network.
+- No extra dependency whose Python 3.14 / PySide6 support we'd have to track.
+- The boundary is narrow and explicit: UI → loop through
+  `loop.call_soon_threadsafe` (`_call`), loop → UI through `_emit`, which wraps
+  each signal emission in a closure and sends it over a private signal with
+  `Qt.QueuedConnection` to a slot of the backend (a main-thread object). So
+  every public signal is emitted on the main thread, and connected Python
+  lambdas never run on the worker thread, whatever PySide's rules are for
+  connections without a receiver object.
+
+All slixmpp objects (the client, its roster) are touched only on the loop
+thread. `shutdown()` disconnects, cancels the remaining slixmpp tasks and
+closes the loop; without the cancel, finalizers of dropped clients ran after
+the loop was gone and printed "Event loop is closed" on exit.
+
+### [14] Without "require TLS" only SCRAM may authenticate
+
+slixmpp refuses every SASL mechanism on an unencrypted stream by default. When
+the user switches off "require TLS" (a server without TLS, e.g. on a LAN), we
+allow only SCRAM: it proves knowledge of the password without sending it, so a
+listener learns nothing they could log in with. PLAIN would put the password
+on the wire in base64. A server that offers only PLAIN without TLS therefore
+fails to authenticate, which is deliberate.
+
+### [15] Connection retries belong to the controller, not to slixmpp
+
+slixmpp retries a failed connect forever on its own (back-off up to 300 s), and
+nothing outside it would know. `reschedule_connection_attempt` is overridden
+to stop after one pass over all addresses and report `offline`. The controller
+then retries on its own schedule (`RECONNECT_DELAYS_S`), only while the user
+wants to be online and auto-reconnect is on. So there is exactly one retry
+loop, Log off really stops it, and the "Cannot connect" notice appears once per
+outage instead of on every attempt.
+
+Permanent failures (wrong password, untrusted certificate, the same resource
+logged in elsewhere) emit `loginRejected` instead. The controller then stops
+retrying: repeating a wrong password can get the account locked, and two
+clients with the same resource would kick each other off forever.
+
+### [16] A subscription request from someone we already asked is approved automatically
+
+When we add a contact we send `subscribe`. Most clients answer by approving
+it **and** sending their own `subscribe` back, so both sides see each other.
+Asking the user "X wants to add you" right after they added X themselves is
+noise, so a request from a JID we already subscribed to (or are waiting for,
+`pending_out`) is approved without asking. Requests from anyone else still go
+to Notifications. This concerns presence only. It has nothing to do with OMEMO
+device trust, which is never automatic.
+
+### [17] Server history: everything since we were last connected
+
+Decided: archived messages (XEP-0313 MAM) are shown as incoming messages and
+forgotten when the window closes. Fetching the whole archive at every login
+would bring back conversations already read, so the controller stores one
+timestamp, `history_since`, in the settings: the moment we were last
+connected (written when the connection goes down and when the app quits). At
+login, only messages archived after it are fetched (at most `MAM_LIMIT`). No
+message content is stored on disk.
+
+- First start (no timestamp yet): no history is fetched.
+- After a crash the timestamp is older, so some already-seen messages can
+  show up again. That is harmless and rare.
+- A message can arrive twice: as a live offline delivery and in the archive.
+  Both carry the archive id (XEP-0359 `stanza-id` from our own server), and
+  each id is shown only once.
+- Messages I sent from another device are skipped in history (the interface
+  shows them only live, through carbons, in a chat that is open).
+
+## src/jaba_da_hat/main.py
+
+### [18] slixmpp is never logged at DEBUG
+
+slixmpp's DEBUG output contains every stanza sent and received, including the
+SASL exchange. With PLAIN authentication that is the password in base64, and
+it would end up in a terminal or a bug report. `-v` therefore raises only our
+own loggers to DEBUG; slixmpp stays at INFO (WARNING without `-v`).
+
+## build.sh
+
+### [19] slixmpp plugins are listed for Nuitka by asking slixmpp
+
+`register_plugin("xep_0313")` imports `slixmpp.plugins.xep_0313` by name at
+runtime, and each plugin pulls in its dependencies the same way. Nuitka only
+follows static imports, so a binary built without help logs in and then fails
+on the first plugin. build.sh creates a client exactly like the app does,
+initialises its plugins, and passes every loaded `slixmpp.plugins.*` /
+`slixmpp.features.*` package to `--include-package`. The list stays correct
+when the backend starts using a new XEP.

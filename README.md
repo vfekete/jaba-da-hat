@@ -5,9 +5,9 @@
 A Jabber/XMPP-only instant messenger for GNOME that lives in the system tray.
 No other protocols, no plugins: just XMPP done properly.
 
-> **Status: 0.1.0 — UI preview.** Everything runs on a built-in *mock backend* with made-up
-> contacts (`@example.org`). No network connection is made yet. Real XMPP arrives in 0.2.0,
-> see [docs/PLAN.md](docs/PLAN.md).
+> **Status: 0.2.0 in progress.** Connects to real XMPP servers (login, contacts, presence,
+> subscriptions, messages, typing, server history). File transfer arrives in 0.3.0 and
+> OMEMO encryption in 0.4.0; until then they work only with `--mock`. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Features
 
@@ -41,9 +41,25 @@ No other protocols, no plugins: just XMPP done properly.
 ./run.sh --help
 ```
 
-In 0.1.x the tray menu has a **Mock / testing** submenu to simulate an incoming message,
-an authorization request, an incoming file and a dropped connection. Use the password `wrong`
-in Settings to simulate a failed login.
+`./run.sh --mock` uses a built-in mock backend with made-up contacts (`@example.org`)
+instead of a server. Its tray menu has a **Mock / testing** submenu to simulate an incoming
+message, an authorization request, an incoming file and a dropped connection; the password
+`wrong` simulates a failed login.
+
+### Test server
+
+A throw-away [Prosody](https://prosody.im) in Docker, with test accounts `me`, `alice` and
+`bob` `@localhost` (password `test-password`):
+
+```bash
+tools/test-server.sh start     # also creates a test CA in build/prosody/
+./run.sh --config /tmp/jdh-me.json --ca-file build/prosody/ca.crt
+tools/test-server.sh stop      # deletes the container with all accounts and history
+```
+
+In Settings use Jabber ID `me@localhost`, server `127.0.0.1`, port `15222`. A second
+instance with another `--config` file can log in as `alice@localhost` to chat with yourself.
+`--config` keeps the test account out of your real `~/.config/jaba-da-hat/config.json`.
 
 ## Build a single binary
 
@@ -76,6 +92,7 @@ Received files go to `~/Downloads` unless changed in Settings.
 ```bash
 uv sync                                                    # create / update .venv
 uv run pytest                                              # tests (Qt runs offscreen)
+JDH_XMPP_TEST=1 uv run pytest tests/test_xmpp_integration.py  # against Prosody (needs docker)
 QT_QPA_PLATFORM=offscreen uv run python tools/screenshots.py   # refresh README screenshots
 QT_QPA_PLATFORM=offscreen uv run python tools/gen_icons.py     # rescale icons from assets/app-icon.png
 ```

@@ -7,6 +7,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- **Real XMPP backend** (`backend/xmpp.py`, slixmpp), now the default; `--mock` starts the old
+  mock backend. Covered: TLS login with DNS SRV or a manual server, roster, presence (best
+  resource wins), subscriptions (accept / decline / decline & block), messages, chat states,
+  carbons (XEP-0280), server history (MAM, XEP-0313), stream management (XEP-0198), ping
+  keepalive (XEP-0199), blocking (XEP-0191), XEP-0066 links shown as clickable text.
+- Server history newer than the last time we were connected is fetched at login and shown as
+  incoming messages; only that timestamp (`history_since`) is stored, never message content.
+- Messages I write on another device appear in an open chat on my side (carbons).
+- `--ca-file` to trust an extra CA (used for the test server).
+- `tools/test-server.sh`: throw-away Prosody in a container with test accounts, and
+  `tests/test_xmpp_integration.py` against it (`JDH_XMPP_TEST=1`).
 - `docs/rfc/xep/xep-0313.html` (Message Archive Management), needed for fetching server history.
 - `--register` / `--unregister` command-line options (old `--install-desktop` / `--uninstall-desktop` still work).
 - At startup the binary re-registers itself when an older version is registered, so the
@@ -20,6 +31,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `jeepney` dependency (pure-Python D-Bus) for the own tray implementation.
 
 ### Fixed
+- The server field accepts `host:port` (e.g. `127.0.0.1:15222`); before, the whole text was
+  looked up as a host name and failed with a misleading "no DNS record for <JID domain>".
+- Connection errors name the address actually tried and say "host name not found" /
+  "connection refused" instead of raw Python errors.
 - Repeated tray wiggle was invisible after the first round: frames changed faster than the panel
   samples the icon; frames are now held 150 ms and every one is tilted.
 - Tray menu kept showing stale entries (e.g. "Status: Offline / Connecting…" after a successful
@@ -33,6 +48,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Misleading "re-registered … from 0.1.0 to 0.1.0" log line.
 
 ### Changed
+- A dropped connection is retried after 3, 10, 30, 60, 120 s, then every 5 min, with one
+  "reconnecting" notice per outage instead of one per attempt.
+- Permanent login failures (wrong password, untrusted certificate, same resource logged in
+  elsewhere) stop automatic retries through a dedicated `loginRejected` signal instead of
+  matching the error text.
+- With encryption switched on but unavailable (OMEMO arrives in 0.4.0) a message is refused,
+  never sent as plain text.
+- slixmpp is never logged at DEBUG, because that log contains the SASL exchange.
+- `build.sh` bundles the slixmpp plugins, which are imported by name at runtime.
 - Tray icon wiggles 1 s on / 1 s off for as long as something is waiting.
 - GNOME notifications are sent directly over D-Bus; clicking one opens the chats it was about.
 - Tray icon no longer uses the app logo: coloured status circles, or an envelope (unread message),

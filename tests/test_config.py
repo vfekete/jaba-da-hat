@@ -30,3 +30,17 @@ def test_corrupt_file_gives_defaults(tmp_path):
     p = tmp_path / "c.json"
     p.write_text("{not json")
     assert config.load(p) == config.Settings()
+
+
+def test_server_field_accepts_host_and_port():
+    from jaba_da_hat.config import Settings, split_server
+
+    assert split_server("127.0.0.1:15222", 5222) == ("127.0.0.1", 15222)
+    assert split_server(" xmpp.example.org ", 5223) == ("xmpp.example.org", 5223)
+    assert split_server("[::1]:15222", 5222) == ("::1", 15222)
+    assert split_server("::1", 5222) == ("::1", 5222)
+    assert split_server("", 5222) == ("", 5222)
+    assert split_server("host:99999", 5222) == ("host:99999", 5222)
+    s = Settings(server="127.0.0.1:15222", port=5222)
+    s.normalize()
+    assert (s.server, s.port) == ("127.0.0.1", 15222)

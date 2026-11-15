@@ -1,6 +1,6 @@
 # jaba-da-hat — plan and XMPP feasibility
 
-Status: **0.1.0 — UI skeleton on mock data.** No real XMPP traffic yet.
+Status: **0.2.0 in progress — real XMPP backend implemented, waiting for your manual test.** File transfer (0.3.0) and OMEMO (0.4.0) still run only on the mock backend.
 
 Decisions made so far (2026-11-15):
 
@@ -9,7 +9,7 @@ Decisions made so far (2026-11-15):
 | End-to-end encryption | **OMEMO** (XEP-0384) instead of OTR |
 | File transfer | **Jingle FT** (XEP-0234) preferred, **HTTP Upload** (XEP-0363) as fallback |
 | Password storage | `~/.config/jaba-da-hat/config.json`, mode `0600` |
-| XMPP library (phase 2) | `slixmpp` (asyncio) + `qasync` to share the Qt event loop |
+| XMPP library | `slixmpp` (asyncio) on its own loop in a worker thread; signals are re-posted to the Qt main thread (not `qasync`, see comments-details [13]) |
 | UI | PySide6 + QtQuick/QML (Material style); tray = own StatusNotifierItem + dbusmenu over D-Bus (jeepney), menu built as a `QMenu` |
 | Packaging | Nuitka onefile → `build/jdh-<SemVer>`; the binary re-registers itself when an older version is registered; `--register` / `--unregister` |
 | Platform | Ubuntu GNOME on Wayland (tray via the AppIndicator extension) |
@@ -54,7 +54,7 @@ Legend: ✅ fully covered by a standard · 🟡 possible with caveats · 🖥 cl
 | Version | Content | Manual test by you |
 | --- | --- | --- |
 | **0.1.0** (this) | Project scaffold, tray + menu, contacts manager (multi-select, groups, drag & drop), chat window, file-transfer UI, notifications, settings, theme, autostart, `run.sh`, `build.sh`, tests — **all on a mock backend** | ✅ now |
-| 0.2.0 | Real XMPP via slixmpp: TLS login, SRV, roster, presence, subscriptions (accept / decline / block), messages, chat states, carbons (XEP-0280), MAM history, stream management, ping, auto-reconnect; Prosody test server in a container | ✅ against Prosody |
+| **0.2.0** (implemented) | Real XMPP via slixmpp: TLS login, SRV, roster, presence, subscriptions (accept / decline / block), messages, chat states, carbons (XEP-0280), MAM history, stream management, ping, auto-reconnect; Prosody test server in a container | ✅ against Prosody |
 | 0.3.0 | File transfer: HTTP Upload send + OOB receive, Jingle FT send/receive (IBB + SOCKS5), ranged resume, "pause" emulation | |
 | 0.4.0 | OMEMO (both namespaces), device list, fingerprint view, per-window device approval | |
 | 1.0.0 | Polish, packaging check on a clean user account | |
@@ -76,7 +76,8 @@ Every phase is developed on the `dev` branch; merging to `main` only after tests
 main.py          argument parsing, QApplication, single instance (QLocalServer), SIGTERM → clean quit
 core.py          AppController: settings, backend wiring, models, window management (exposed to QML as `app`)
 backend/base.py  Backend interface (Qt signals + methods) — the only thing the UI talks to
-backend/mock.py  MockBackend with fake example.org contacts; phase 2 adds backend/xmpp.py
+backend/mock.py  MockBackend with fake example.org contacts (--mock)
+backend/xmpp.py  XmppBackend: slixmpp in a worker thread (default)
 models.py        RosterModel, MessageModel, NotificationModel, Transfer
 chat.py          ChatSession: one open conversation (memory only), typing states, file transfer actions
 tray.py          tray behaviour: icon choice + wiggle, dynamic menu, toasts, notifications

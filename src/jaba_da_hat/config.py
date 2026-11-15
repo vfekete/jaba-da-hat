@@ -48,9 +48,24 @@ class Settings:
     show_offline: bool = False
     # Groups with no members exist only locally; XMPP stores groups per contact — see docs/comments-details.md [1].
     local_groups: list[str] = field(default_factory=list)
+    # When we were last connected (UTC, ISO 8601): server history newer than this is shown at login.
+    history_since: str = ""
+
+    def normalize(self) -> None:
+        """Accept "host:port" (or "[v6]:port") typed into the server field."""
+        self.server, self.port = split_server(self.server, self.port)
 
     def has_credentials(self) -> bool:
         return bool(self.jid and "@" in self.jid and self.password)
+
+
+def split_server(server: str, port: int) -> tuple[str, int]:
+    """Split an optional ":port" off a server address; a bare IPv6 address is left alone."""
+    server = (server or "").strip()
+    host, sep, tail = server.rpartition(":")
+    if sep and tail.isdigit() and 0 < int(tail) < 65536 and (host.count(":") == 0 or host.startswith("[")):
+        return host.strip("[]"), int(tail)
+    return server.strip("[]") if server.startswith("[") else server, port
 
 
 def load(path: Path | None = None) -> Settings:
@@ -63,6 +78,7 @@ def load(path: Path | None = None) -> Settings:
     s = Settings(**{k: v for k, v in raw.items() if k in known})
     if s.theme not in THEMES:
         s.theme = "system"
+    s.normalize()
     if s.notification_style not in NOTIFICATION_STYLES:
         s.notification_style = "toast"
     return s

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Property, Signal, Slot
@@ -16,6 +17,7 @@ from jaba_da_hat.chat import ChatSession
 from jaba_da_hat.models import PRESENCE_LABELS, PRESENCES, UNGROUPED, Contact, NotificationModel, RosterModel, Transfer
 
 log = logging.getLogger(__name__)
+RECONNECT_DELAYS_S = (3, 10, 30, 60, 120, 300)  # then stays at the last value
 QML_DIR = Path(__file__).resolve().parent / "qml"
 
 
@@ -38,6 +40,7 @@ class AppController(QObject):
         self.connection_state = "offline"
         self._presence = "available"  # desired presence while online
         self._wanted_online = False
+        self._reconnect_attempt = 0
         self.roster = RosterModel(self)
         self.roster.set_local_groups(settings.local_groups)
         self.notifications = NotificationModel(self)
@@ -52,11 +55,13 @@ class AppController(QObject):
         b = backend
         b.stateChanged.connect(self._on_state)
         b.error.connect(self._on_error)
+        b.loginRejected.connect(self._on_login_rejected)
         b.rosterReceived.connect(self._on_roster)
         b.contactUpdated.connect(self._on_contact)
         b.contactRemoved.connect(self.roster.remove)
         b.presenceReceived.connect(self._on_presence)
         b.messageReceived.connect(self._on_message)
+        b.messageSentElsewhere.connect(self._on_sent_elsewhere)
         b.chatStateReceived.connect(self._on_chat_state)
         b.subscriptionRequested.connect(self._on_subscription)
         b.fileOffered.connect(self._on_file_offer)
@@ -92,6 +97,7 @@ class AppController(QObject):
     def settingsMap(self) -> dict:  # noqa: N802
         d = asdict(self.settings)
         d.pop("local_groups")
+        d.pop("history_since")
         d["start_at_login"] = autostart.is_enabled()
         return d
 
@@ -101,11 +107,12 @@ class AppController(QObject):
         old_account = (self.settings.jid, self.settings.password, self.settings.server, self.settings.port,
                        self.settings.resource, self.settings.require_tls)
         for k, v in values.items():
-            if hasattr(self.settings, k) and k != "local_groups":
+            if hasattr(self.settings, k) and k not in ("local_groups", "history_since"):
                 cur = getattr(self.settings, k)
                 setattr(self.settings, k, type(cur)(v) if cur is not None else v)
         if self.settings.theme not in config.THEMES:
             self.settings.theme = "system"
+        self.settings.normalize()
         self._persist()
         try:
             autostart.set_enabled(self.settings.start_at_login)
@@ -140,6 +147,7 @@ class AppController(QObject):
             self.openSettings()
             return
         self._wanted_online = True
+        self._reconnect_attempt = 0
         self.backend.login(self.settings)
 
     @Slot()
@@ -162,25 +170,46 @@ class AppController(QObject):
         self.presenceChanged.emit()
 
     def _on_state(self, state: str) -> None:
+        was = self.connection_state
+        if state == was:
+            return
         self.connection_state = state
-        if state == "online" and self._presence != "available":
-            self.backend.set_presence(self._presence)
+        if state == "online":
+            self._reconnect_attempt = 0
+            if self._presence != "available":
+                self.backend.set_presence(self._presence)
         if state == "offline":
+            if was == "online":
+                self.mark_history_seen()
             self.roster.set_all_offline()
             for s in self.sessions.values():
                 s.set_remote_typing(False)
             if self._wanted_online and self.settings.auto_reconnect:
-                self.notifications.add("error", "Disconnected — reconnecting…")
-                QTimer.singleShot(3000, lambda: self._wanted_online and self.connection_state == "offline"
-                                  and self.backend.login(self.settings))
+                self._schedule_reconnect(announce=was == "online")
         self.stateChanged.emit()
         self.presenceChanged.emit()
+
+    def _schedule_reconnect(self, announce: bool) -> None:
+        """Retry with growing pauses; one notification per outage, not per attempt."""
+        delay = RECONNECT_DELAYS_S[min(self._reconnect_attempt, len(RECONNECT_DELAYS_S) - 1)]
+        self._reconnect_attempt += 1
+        if announce:
+            self.notifications.add("error", "Disconnected — reconnecting…")
+        QTimer.singleShot(delay * 1000, lambda: self._wanted_online and self.connection_state == "offline"
+                          and self.backend.login(self.settings))
+
+    def mark_history_seen(self) -> None:
+        """Remember that everything until now was received live; the next login fetches only newer history — see docs/comments-details.md [17]."""
+        self.settings.history_since = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self._persist()
 
     def _on_error(self, text: str) -> None:
         self.notifications.add("error", text)
         self.notify.emit(f"{APP_NAME}: problem", text, "", "note")
-        if "Authentication failed" in text:
-            self._wanted_online = False  # retrying with a bad password would only lock the account
+
+    def _on_login_rejected(self, text: str) -> None:
+        self._wanted_online = False  # retrying with e.g. a bad password would only lock the account
+        self._on_error(text)
 
     # ================================================================ roster
     def _on_roster(self, items: list) -> None:
@@ -316,6 +345,12 @@ class AppController(QObject):
             self.roster.add_unread(jid)
             c = self.roster.contact(jid)
             self.notify.emit(c.display_name if c else jid, body[:200], jid, "message")
+
+    def _on_sent_elsewhere(self, jid: str, body: str) -> None:
+        """Show what I wrote from another device, but only in a chat that is already open."""
+        s = self.sessions.get(jid)
+        if s is not None:
+            s.messages.add_text("out", body, False)
 
     def _on_chat_state(self, jid: str, state: str) -> None:
         if jid in self.sessions:
@@ -465,6 +500,8 @@ class AppController(QObject):
         """Called on quit / session logout: say goodbye to the server and drop all chats."""
         for s in list(self.sessions.values()):
             s.windowClosed()
+        if self.connection_state == "online":
+            self.mark_history_seen()
         if self.connection_state != "offline":
             self.logout()
         self._persist()

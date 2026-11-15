@@ -194,3 +194,37 @@ def test_save_settings_persists(ctl, tmp_path):
     loaded = config.load(tmp_path / "cfg.json")
     assert loaded.theme == "dark" and loaded.send_typing is False and loaded.port == 5223
     assert ctl.darkTheme
+
+
+def test_dropped_connection_reconnects_with_backoff_and_one_notice(ctl, monkeypatch):
+    from jaba_da_hat import core
+
+    delays = []
+    monkeypatch.setattr(core.QTimer, "singleShot", lambda ms, fn: delays.append(ms))
+    ctl.login()
+    assert ctl.connection_state == "online"
+    ctl.backend.simulate_connection_drop()
+    ctl._on_state("connecting")
+    ctl._on_state("offline")  # the retry failed too
+    assert delays == [3000, 10000]
+    assert sum("reconnecting" in n["text"] for n in ctl.notifications._rows) == 1
+
+
+def test_history_cursor_saved_when_going_offline(ctl):
+    from datetime import datetime
+
+    ctl.login()
+    assert ctl.settings.history_since == ""
+    ctl.logout()
+    assert datetime.fromisoformat(ctl.settings.history_since).tzinfo is not None
+    assert "history_since" not in ctl.settingsMap()  # internal, not shown in Settings
+
+
+def test_best_presence_prefers_priority_then_reachability():
+    from jaba_da_hat.backend.xmpp import best_presence
+
+    assert best_presence({}) == ("offline", "")
+    assert best_presence({"a": {"show": "away", "status": "x", "priority": 0},
+                          "b": {"show": "", "status": "", "priority": 0}}) == ("available", "")
+    assert best_presence({"a": {"show": "xa", "status": "zzz", "priority": 5},
+                          "b": {"show": "chat", "status": "", "priority": 0}}) == ("xa", "zzz")

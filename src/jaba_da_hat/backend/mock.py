@@ -69,7 +69,8 @@ class MockBackend(Backend):
         def done():
             if settings.password == "wrong":
                 self.stateChanged.emit("offline")
-                self.error.emit(f"Authentication failed for {settings.jid or 'account'} (mock: password 'wrong').")
+                self.loginRejected.emit(
+                    f"Authentication failed for {settings.jid or 'account'} (mock: password 'wrong').")
                 return
             self._online = True
             self.stateChanged.emit("online")

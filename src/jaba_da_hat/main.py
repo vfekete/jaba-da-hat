@@ -19,8 +19,10 @@ TRAY_WAIT_MS = 30_000
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="jdh", description=f"{APP_NAME} — Jabber/XMPP tray messenger")
     p.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
-    p.add_argument("--mock", action="store_true", default=True,
-                   help="use the built-in mock backend with fake contacts (the only backend in 0.x)")
+    p.add_argument("--mock", action="store_true",
+                   help="use the built-in mock backend with fake contacts instead of a real XMPP server")
+    p.add_argument("--ca-file", type=Path,
+                   help="also trust this CA certificate (PEM), e.g. for the test server in tools/test-server.sh")
     p.add_argument("--config", type=Path, help="use this settings file instead of ~/.config/jaba-da-hat/config.json")
     p.add_argument("--autostart", action="store_true", help="started by the desktop session at login")
     p.add_argument("--register", "--install-desktop", dest="register", action="store_true",
@@ -57,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # slixmpp's DEBUG log contains raw stanzas, including the SASL exchange — see docs/comments-details.md [18].
+    logging.getLogger("slixmpp").setLevel(logging.INFO if args.verbose else logging.WARNING)
 
     if args.toast:
         from jaba_da_hat.toast import run_toast
@@ -94,7 +98,6 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtWidgets import QApplication
 
     from jaba_da_hat import config
-    from jaba_da_hat.backend.mock import MockBackend
     from jaba_da_hat.core import AppController
     from jaba_da_hat.tray import Tray, app_pixmap
 
@@ -122,8 +125,16 @@ def main(argv: list[str] | None = None) -> int:
     settings_path = args.config
     settings = config.load(settings_path)
     engine = QQmlApplicationEngine()
-    backend = MockBackend()
-    log.info("%s %s starting with the MOCK backend (no real XMPP traffic)", APP_NAME, __version__)
+    if args.mock:
+        from jaba_da_hat.backend.mock import MockBackend
+
+        backend = MockBackend()
+        log.info("%s %s starting with the MOCK backend (no real XMPP traffic)", APP_NAME, __version__)
+    else:
+        from jaba_da_hat.backend.xmpp import XmppBackend
+
+        backend = XmppBackend(ca_file=str(args.ca_file) if args.ca_file else None)
+        log.info("%s %s starting", APP_NAME, __version__)
     ctl = AppController(backend, settings, settings_path, engine)
 
     hints = qapp.styleHints()
@@ -163,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
          "notifications": ctl.openNotifications}[args.open]()
     QTimer.singleShot(0, ctl.start)
     rc = qapp.exec()
+    backend.shutdown()  # waits briefly so the server gets our goodbye
     sig_notifier.setEnabled(False)
     server.close()
     return rc

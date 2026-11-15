@@ -15,6 +15,8 @@ class Backend(QObject):
     # Connection: "offline" | "connecting" | "online"
     stateChanged = Signal(str)
     error = Signal(str)
+    # The server refused the login for good (bad password, untrusted certificate, conflict): don't retry.
+    loginRejected = Signal(str)
     # Roster: dicts with keys jid, name, groups, subscription
     rosterReceived = Signal(list)
     contactUpdated = Signal(dict)
@@ -22,6 +24,7 @@ class Backend(QObject):
     presenceReceived = Signal(str, str, str)  # jid, presence, status text
     # Messaging
     messageReceived = Signal(str, str, bool)  # jid, body, encrypted
+    messageSentElsewhere = Signal(str, str)  # jid, body: I wrote it on another device (XEP-0280)
     chatStateReceived = Signal(str, str)  # jid, "composing" | "paused" | "active" | "gone"
     subscriptionRequested = Signal(str, str)  # jid, optional message
     # File transfer
@@ -40,6 +43,9 @@ class Backend(QObject):
 
     def set_presence(self, presence: str, status: str = "") -> None:
         raise NotImplementedError
+
+    def shutdown(self, timeout: float = 3.0) -> None:
+        """Called once when the application exits, after ``logout``; may block up to *timeout* s."""
 
     # ---- messaging ---------------------------------------------------
     def send_message(self, jid: str, body: str, encrypt: bool) -> None:
