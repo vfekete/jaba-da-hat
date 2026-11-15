@@ -1,6 +1,6 @@
 # jaba-da-hat — plan and XMPP feasibility
 
-Status: **0.4.0 (OMEMO) and the 1.0.0 polish (blocked contacts, fast reconnect after sleep / network change, clean-account package check) implemented on `dev`; waiting for your manual test before release.** OMEMO (0.4.0) still runs only on the mock backend.
+Status: **1.0.0 released** (2026-11-15). OMEMO, suspend/resume and the blocked list were released without a manual test. OMEMO (0.4.0) still runs only on the mock backend.
 
 Decisions made so far (2026-11-15):
 
@@ -56,8 +56,8 @@ Legend: ✅ fully covered by a standard · 🟡 possible with caveats · 🖥 cl
 | **0.1.0** (this) | Project scaffold, tray + menu, contacts manager (multi-select, groups, drag & drop), chat window, file-transfer UI, notifications, settings, theme, autostart, `run.sh`, `build.sh`, tests — **all on a mock backend** | ✅ now |
 | **0.2.0** (done) | Real XMPP via slixmpp: TLS login, SRV, roster, presence, subscriptions (accept / decline / block), messages, chat states, carbons (XEP-0280), MAM history, stream management, ping, auto-reconnect; Prosody test server in a container | ✅ against Prosody |
 | **0.3.0** (done) | File transfer: HTTP Upload send + OOB receive, Jingle FT send/receive (IBB + SOCKS5), ranged resume, "pause" emulation | |
-| 0.4.0 | OMEMO (both namespaces), device list, fingerprint view, per-window device approval | |
-| 1.0.0 (implemented) | Polish chosen 2026-11-15: blocked-contacts list with unblock, fast reconnect after suspend / network change, clean-account package check (`tools/package-check.sh`) | ✅ before release |
+| 0.4.0 (released as part of 1.0.0) | OMEMO (both namespaces), device list, fingerprint view, per-window device approval | |
+| **1.0.0** (released) | Polish chosen 2026-11-15: blocked-contacts list with unblock, fast reconnect after suspend / network change, clean-account package check (`tools/package-check.sh`) | ✅ before release |
 
 Every phase is developed on the `dev` branch; merging to `main` only after tests pass and your manual test.
 

@@ -1,6 +1,6 @@
 [project]
 name = "jaba-da-hat"
-version = "0.3.0"
+version = "1.0.0"
 description = "Jabber/XMPP-only tray messenger for GNOME"
 readme = "README.md"
 license = "MIT"

@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-11-15
+
+First stable version: chat, contacts, blocking, file transfer and OMEMO encryption against real
+XMPP servers. Released without a manual test of OMEMO (incl. other clients), suspend/resume and
+the blocked-contacts list — those are covered by automated tests only. (0.4.0 was never released
+separately; its changes are part of this version.)
+
 ### Added
 - **OMEMO end-to-end encryption** (XEP-0384, legacy namespace used by Conversations, Dino and Gajim)
   through python-omemo / slixmpp-omemo.
