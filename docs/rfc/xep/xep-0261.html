@@ -1,0 +1,356 @@
+<!DOCTYPE html SYSTEM "about:legacy-compat">
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>XEP-0261: Jingle In-Band Bytestreams Transport Method</title><style type="text/css">
+/* don't mind this hack */
+nav#toc h2:before {
+display: none;
+content: "XEP-0261";
+}
+        </style><link rel="stylesheet" type="text/css" href="xmpp.css"><link href="prettify.css" type="text/css" rel="stylesheet"><link rel="shortcut icon" type="image/x-icon" href="/favicon.ico"><script type="text/javascript" src="prettify.js"></script><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="title" content="XEP-0261: Jingle In-Band Bytestreams Transport Method"><meta name="description" content="This specification defines a Jingle transport method that results in sending data via the In-Band Bytestreams (IBB) protocol defined in XEP-0047. Essentially this transport method reuses XEP-0047 semantics for sending the data and defines native Jingle methods for starting and ending an IBB session."><meta name="DC.Title" content="Jingle In-Band Bytestreams Transport Method"><meta name="DC.Creator" content="Peter Saint-Andre"><meta name="DC.Description" content="This specification defines a Jingle transport method that results in sending data via the In-Band Bytestreams (IBB) protocol defined in XEP-0047. Essentially this transport method reuses XEP-0047 semantics for sending the data and defines native Jingle methods for starting and ending an IBB session."><meta name="DC.Publisher" content="XMPP Standards Foundation"><meta name="DC.Contributor" content="XMPP Extensions Editor"><meta name="DC.Date" content="2011-09-23"><meta name="DC.Type" content="XMPP Extension Protocol"><meta name="DC.Format" content="XHTML"><meta name="DC.Identifier" content="XEP-0261"><meta name="DC.Language" content="en"><meta name="DC.Rights" content="This XMPP Extension Protocol is copyright © 1999 – 2024 by the XMPP Standards Foundation (XSF)."><meta property="og:type" content="website"><meta property="og:url" content="https://xmpp.org/extensions/xep-0261.html"><meta property="og:title" content="XEP-0261: Jingle In-Band Bytestreams Transport Method"><meta property="og:description" content="This specification defines a Jingle transport method that results in sending data via the In-Band Bytestreams (IBB) protocol defined in XEP-0047. Essentially this transport method reuses XEP-0047 semantics for sending the data and defines native Jingle methods for starting and ending an IBB session."><meta property="og:image" content="https://xmpp.org/images/logos/xmpp-logo-text-banner.jpg"><meta property="og:image:alt" content="XMPP (Extensible Messaging and Presence Protocol) Logo"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary"><meta name="twitter:url" content="https://xmpp.org/extensions/xep-0261.html"><meta name="twitter:title" content="XEP-0261: Jingle In-Band Bytestreams Transport Method"><meta name="twitter:description" content="This specification defines a Jingle transport method that results in sending data via the In-Band Bytestreams (IBB) protocol defined in XEP-0047. Essentially this transport method reuses XEP-0047 semantics for sending the data and defines native Jingle methods for starting and ending an IBB session."><meta name="twitter:image" content="https://xmpp.org/images/logos/xmpp-logo-text-banner.jpg"></head><body onload="prettyPrint()"><h1>XEP-0261: Jingle In-Band Bytestreams Transport Method</h1><div class="docmeta-wrap"><dl id="docmeta" class="compact"><dt>Abstract</dt><dd>This specification defines a Jingle transport method that results in sending data via the In-Band Bytestreams (IBB) protocol defined in XEP-0047. Essentially this transport method reuses XEP-0047 semantics for sending the data and defines native Jingle methods for starting and ending an IBB session.</dd><dt>Author</dt><dd>Peter Saint-Andre</dd><dt>Copyright</dt><dd>© 2009 – 2011 XMPP Standards Foundation. <a href="#appendix-legal">SEE LEGAL NOTICES</a>.</dd><dt>Status</dt><dd><p>Stable</p><div id="status-notice" class="draft standards track">NOTICE: The protocol defined herein is a <strong>Stable Standard</strong> of the XMPP Standards Foundation. Implementations are encouraged and the protocol is appropriate for deployment in production systems, but some changes to the protocol are possible before it becomes a Final Standard.</div></dd><dt>Type</dt><dd>Standards Track</dd><dt>Version</dt><dd>1.0 (2011-09-23)</dd></dl><div class="timeline-wrap"><div class="timeline-head">Document Lifecycle</div><ol class="timeline"><li>Experimental</li><li>Proposed</li><li class="current">Stable</li><li>Final</li></ol></div></div><nav id="toc"><a href="#top"><h2>Table of Contents</h2></a><ol class="toc"><li><a href="#intro">Introduction</a></li><li><a href="#protocol">Protocol</a><ol><li><a href="#protocol-flow">Flow</a></li><li><a href="#protocol-start">Establishing a Bytestream</a></li><li><a href="#protocol-data">Exchanging Data</a></li><li><a href="#protocol-multi">Managing Multiple IBB Sessions</a></li><li><a href="#protocol-close">Closing the Bytestream</a></li></ol></li><li><a href="#rules">Processing Rules and Usage Guidelines</a></li><li><a href="#support">Determining Support</a></li><li><a href="#security">Security Considerations</a><ol><li><a href="#security-media">Encryption of Media</a></li><li><a href="#security-base64">Use of Base64</a></li></ol></li><li><a href="#iana">IANA Considerations</a></li><li><a href="#registrar">XMPP Registrar Considerations</a><ol><li><a href="#registrar-ns">Protocol Namespaces</a></li><li><a href="#registrar-versioning">Protocol Versioning</a></li><li><a href="#registrar-transports">Jingle Transport Methods</a></li></ol></li><li><a href="#schema">XML Schema</a></li><li><a href="#ack">Acknowledgements</a></li></ol><h6><a href="#appendices">Appendices</a></h6><ol class="toc-appendices"><li><a href="#appendix-docinfo">Document Information</a></li><li><a href="#appendix-authorinfo">Author Information</a></li><li><a href="#appendix-legal">Legal Notices</a></li><li><a href="#appendix-xmpp">Relation to XMPP</a></li><li><a href="#appendix-discuss">Discussion Venue</a></li><li><a href="#appendix-conformance">Requirements Conformance</a></li><li><a href="#appendix-notes">Notes</a></li><li><a href="#appendix-revs">Revision History</a></li><li><a href="#appendix-biblatex">Bib(La)Tex Entry</a></li></ol></nav><h2 id="intro">1.
+       Introduction<a class="anchor-link" href="#intro"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <p class="" style=""><span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0166.html">Jingle (XEP-0166)</a></span>  [<a href="#nt-idm45657604209984">1</a>] defines a framework for negotiating and managing data sessions over XMPP. In order to provide a flexible framework, the base Jingle specification defines neither data transport methods nor application formats, leaving that up to separate specifications. The current document defines a transport method for establishing and managing data exchanges between XMPP entities using the existing In-Band Bytestreams (IBB) protocol specified in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>]. This "jingle-ibb" method results in a streaming transport method suitable for use in Jingle application types where packet loss cannot be tolerated (e.g., file transfer); however, because the "jingle-ibb" transport method sends data over the XMPP channel itself (albeit not the Jingle signalling channel), it is intended as a transport of last resort when other streaming transports (e.g., <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0260.html">Jingle SOCKS5 Bytestreams Transport Method (XEP-0260)</a></span>  [<a href="#nt-idm45657604199360">3</a>]) cannot be negotiated.</p>
+  <p class="" style="">The approach taken in this specification is to use the existing IBB mechanisms described in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] for transporting the data, and to define Jingle-specific methods only to start and end the in-band bytestream.</p>
+<h2 id="protocol">2.
+       Protocol<a class="anchor-link" href="#protocol"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+
+  <div class="indent"><h3 id="protocol-flow">2.1 Flow<a class="anchor-link" href="#protocol-flow"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">The basic flow is as follows.</p>
+    <figure class="code"><figcaption></figcaption><pre class="prettyprint">
+Initiator                   Responder
+  |                            |
+  |  session-initiate          |
+  |  (with IBB info)           |
+  |---------------------------&gt;|
+  |  ack                       |
+  |&lt;---------------------------|
+  |  session-accept            |
+  |&lt;---------------------------|
+  |  ack                       |
+  |---------------------------&gt;|
+  |  IBB &lt;open/&gt;               |
+  |---------------------------&gt;|
+  |  ack                       |
+  |&lt;---------------------------|
+  |  IBB "SESSION"             |
+  |&lt;==========================&gt;|
+  |  IBB &lt;close/&gt;              |
+  |---------------------------&gt;|
+  |  ack                       |
+  |&lt;---------------------------|
+  |  session-terminate         |
+  |&lt;---------------------------|
+  |  ack                       |
+  |---------------------------&gt;|
+  |                            |
+</pre></figure>
+    <p class="" style="">This flow is illustrated in the following sections (to prevent confusion these use an "example" description instead of a real application type).</p>
+  </div>
+
+  <div class="indent"><h3 id="protocol-start">2.2 Establishing a Bytestream<a class="anchor-link" href="#protocol-start"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">First the initiator sends a Jingle session-initiate request.</p>
+    <figure class="code-example" id="example-1"><figcaption><strong>Example 1.</strong> Initiator sends session-initiate<a class="anchor-link" href="#example-1"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.lit/orchard'
+    id='xn28s7gk'
+    to='juliet@capulet.lit/balcony'
+    type='set'&gt;
+  &lt;jingle xmlns='urn:xmpp:jingle:1'
+          action='session-initiate'
+          initiator='romeo@montague.lit/orchard'
+          sid='a73sjjvkla37jfea'&gt;
+    &lt;content creator='initiator' name='ex'&gt;
+      &lt;description xmlns='urn:xmpp:example'/&gt;
+      &lt;transport xmlns='urn:xmpp:jingle:transports:ibb:1'
+                 block-size='4096'
+                 sid='ch3d9s71'/&gt;
+    &lt;/content&gt;
+  &lt;/jingle&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <p class="" style="">Note: The default value of the 'stanza' attribute is "iq", signifying use of &lt;iq/&gt; stanzas for data exchange; a value of "message" signifies that &lt;message/&gt; stanzas are to be used for data exchange. See <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] for further discussion regarding use of these stanza types for data exchange.</p>
+    <p class="" style="">The responder immediately acknowledges receipt (but does not yet accept the session).</p>
+    <figure class="code-example" id="example-2"><figcaption><strong>Example 2.</strong> Responder acknowledges session-initiate<a class="anchor-link" href="#example-2"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.lit/balcony'
+    id='xn28s7gk'
+    to='romeo@montague.lit/orchard'
+    type='result'/&gt;
+</pre></figure>
+    <p class="" style="">If the offer is acceptable, the responder returns a Jingle session-accept. If the responder wishes to use a smaller block-size, the responder can specify that in the session-accept by returning a different value for the 'block-size' attribute.</p>
+    <figure class="code-example" id="example-3"><figcaption><strong>Example 3.</strong> Responder definitively accepts the session<a class="anchor-link" href="#example-3"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.lit/balcony'
+    id='bsa91h56'
+    to='romeo@montague.lit/orchard'
+    type='set'&gt;
+  &lt;jingle xmlns='urn:xmpp:jingle:1'
+          action='session-accept'
+          responder='juliet@capulet.lit/balcony'
+          sid='a73sjjvkla37jfea'&gt;
+    &lt;content creator='initiator' name='ex'&gt;
+      &lt;description xmlns='urn:xmpp:example'/&gt;
+      &lt;transport xmlns='urn:xmpp:jingle:transports:ibb:1'
+                 block-size='2048'
+                 sid='ch3d9s71'/&gt;
+    &lt;/content&gt;
+  &lt;/jingle&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <p class="" style="">The initiator then acknowledges the session-accept.</p>
+    <figure class="code-example" id="example-4"><figcaption><strong>Example 4.</strong> Initiator acknowledges session-accept<a class="anchor-link" href="#example-4"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.lit/orchard'
+    id='bsa91h56'
+    to='juliet@capulet.lit/balcony'
+    type='result'/&gt;
+</pre></figure>
+    <p class="" style="">In essence, the foregoing Jingle negotiation replaces the &lt;open/&gt; element from <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>]. However, to provide consistent layering of Jingle on top of IBB (thus enabling separation of existing IBB code from new Jingle code), the initiator now MUST also send the &lt;open/&gt; element, with the same 'block-size' and 'sid' values as for the Jingle &lt;transport/&gt; element it negotiated with the recipient (i.e., if the recipient sent a modified &lt;transport/&gt; element element containing a different block size, the initiator MUST use the negotiated values). This adds a roundtrip to the negotiation and could be considered a "no-op", but the extra roundtrip is inconsequential given that the parties will be exchanging base64-encoded data in-band.</p>
+    <figure class="code-example" id="example-5"><figcaption><strong>Example 5.</strong> Initiator sends IBB &lt;open/&gt;<a class="anchor-link" href="#example-5"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.net/orchard'
+    id='jn3h8g65'
+    to='juliet@capulet.com/balcony'
+    type='set'&gt;
+  &lt;open xmlns='http://jabber.org/protocol/ibb'
+        block-size='2048'
+        sid='ch3d9s71'
+        stanza='iq'/&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <p class="" style="">If no error occurs, the responder returns an IQ-result to the initiator.</p>
+    <figure class="code-example" id="example-6"><figcaption><strong>Example 6.</strong> Responder accepts IBB &lt;open/&gt;<a class="anchor-link" href="#example-6"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.com/balcony'
+    id='jn3h8g65'
+    to='romeo@montague.net/orchard'
+    type='result'/&gt;
+</pre></figure>
+    <p class="" style="">However, one of the errors described in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] might occur; in particular, if the value of the IBB 'block-size' attribute sent by the initiator in the &lt;open/&gt; element does not match the value of the 'block-size' attribute communicated by the responder in the Jingle session-accept message then the responder SHOULD return a &lt;resource-constraint/&gt; error as described in <span class="ref">XEP-0047</span>.</p>
+  </div>
+
+  <div class="indent"><h3 id="protocol-data">2.3 Exchanging Data<a class="anchor-link" href="#protocol-data"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">Now the initiator can begin sending IBB packets using an IQ-set for each chunk as described in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>], where the responder will acknowledge each IQ-set in accordance with <span class="ref" style=""><a href="http://tools.ietf.org/html/rfc6120">XMPP Core</a></span>  [<a href="#nt-idm45657604154624">4</a>].</p>
+    <figure class="code-example" id="example-7"><figcaption><strong>Example 7.</strong> An IBB packet<a class="anchor-link" href="#example-7"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.net/orchard'
+    id='ls72b58f'
+    to='juliet@capulet.com/balcony'
+    type='set'&gt;
+  &lt;data xmlns='http://jabber.org/protocol/ibb' seq='0' sid='ch3d9s71'&gt;
+    qANQR1DBwU4DX7jmYZnncmUQB/9KuKBddzQH+tZ1ZywKK0yHKnq57kWq+RFtQdCJ
+    WpdWpR0uQsuJe7+vh3NWn59/gTc5MDlX8dS9p0ovStmNcyLhxVgmqS8ZKhsblVeu
+    IpQ0JgavABqibJolc3BKrVtVV1igKiX/N7Pi8RtY1K18toaMDhdEfhBRzO/XB0+P
+    AQhYlRjNacGcslkhXqNjK5Va4tuOAPy2n1Q8UUrHbUd0g+xJ9Bm0G0LZXyvCWyKH
+    kuNEHFQiLuCY6Iv0myq6iX6tjuHehZlFSh80b5BVV9tNLwNR5Eqz1klxMhoghJOA
+  &lt;/data&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <figure class="code-example" id="example-8"><figcaption><strong>Example 8.</strong> An IBB ack<a class="anchor-link" href="#example-8"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.com/balcony'
+    id='ls72b58f'
+    to='romeo@montague.net/orchard'
+    type='result'/&gt;
+</pre></figure>
+  </div>
+
+  <div class="indent"><h3 id="protocol-multi">2.4 Managing Multiple IBB Sessions<a class="anchor-link" href="#protocol-multi"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">As IBB is defined in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>], there is one session per bytestream (which can be used in both directions). However, because Jingle-IBB provides a management layer on top of IBB, it can be used to run multiple IBB sessions over a single bytestream. This can be done by sending a transport-info message that authorizes an additional session, as shown in the following example (although this example shows the initiator adding a session, the responder could just as well do so).</p>
+    <figure class="code-example" id="example-9"><figcaption><strong>Example 9.</strong> Initiator adds a session to the bytestream<a class="anchor-link" href="#example-9"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.lit/orchard'
+    id='znb376s4'
+    to='juliet@capulet.lit/balcony'
+    type='set'&gt;
+  &lt;jingle xmlns='urn:xmpp:jingle:1'
+          action='transport-info'
+          sid='a73sjjvkla37jfea'&gt;
+    &lt;content creator='initiator' name='ex'&gt;
+      &lt;transport xmlns='urn:xmpp:jingle:transports:ibb:1'
+                 block-size='2048'
+                 sid='bt8a71h6'/&gt;
+    &lt;/content&gt;
+  &lt;/jingle&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <p class="" style="">Here the Jingle Session ID is the same ("a73sjjvkla37jfea") but the new IBB Session ID ("bt8a71h6") is different from the old IBB Session ID that is already in use ("ch3d9s71").</p>
+    <p class="" style="">The initiator opens the second session by sending an IBB &lt;open/&gt; element, which the responder acknowledges (not shown).</p>
+    <figure class="code-example" id="example-10"><figcaption><strong>Example 10.</strong> Initiator sends IBB &lt;open/&gt;<a class="anchor-link" href="#example-10"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.net/orchard'
+    id='yh3vs613'
+    to='juliet@capulet.com/balcony'
+    type='set'&gt;
+  &lt;open xmlns='http://jabber.org/protocol/ibb'
+        block-size='2048'
+        sid='bt8a71h6'
+        stanza='iq'/&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <p class="" style="">The parties can then exchange data over the second session (see <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>]).</p>
+    <p class="" style="">If a party wishes to close one session within a bytestream, it sends an IBB &lt;close/&gt; element as defined in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] specifying the appropriate IBB SessionID.</p>
+    <figure class="code-example" id="example-11"><figcaption><strong>Example 11.</strong> Ending an IBB session<a class="anchor-link" href="#example-11"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.net/orchard'
+    id='us71g45j'
+    to='juliet@capulet.com/balcony'
+    type='set'&gt;
+  &lt;close xmlns='http://jabber.org/protocol/ibb'
+         sid='bt8a71h6'/&gt;
+&lt;/iq&gt;
+</pre></figure>
+      <p class="" style="">The receiving party then acknowledges that the IBB session has been closed by returning an IQ-result.</p>
+      <figure class="code-example" id="example-12"><figcaption><strong>Example 12.</strong> Success response<a class="anchor-link" href="#example-12"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.com/balcony'
+    id='us71g45j'
+    to='romeo@montague.net/orchard'
+    type='result'/&gt;
+</pre></figure>
+  </div>
+
+  <div class="indent"><h3 id="protocol-close">2.5 Closing the Bytestream<a class="anchor-link" href="#protocol-close"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">Whenever a party is finished with a particular session within the bytestream, it SHOULD send an IBB &lt;close/&gt; as shown above. This applies to all sessions, including the last one.</p>
+    <p class="" style="">To close the bytestream itself (e.g., because the parties have finished using all sessions associated with the bytestream), a party sends a Jingle session-terminate action as defined in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0166.html">Jingle (XEP-0166)</a></span>  [<a href="#nt-idm45657604209984">1</a>].</p>
+    <figure class="code-example" id="example-13"><figcaption><strong>Example 13.</strong> Initiator terminates the session<a class="anchor-link" href="#example-13"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.lit/orchard'
+    id='hz81vf48'
+    to='juliet@capulet.lit/balcony'
+    type='set'&gt;
+  &lt;jingle xmlns='urn:xmpp:jingle:1'
+          action='session-terminate'
+          sid='a73sjjvkla37jfea'&gt;
+    &lt;reason&gt;&lt;success/&gt;&lt;/reason&gt;
+  &lt;/jingle&gt;
+&lt;/iq&gt;
+</pre></figure>
+    <p class="" style="">The other party then acknowledges the session-terminate and the Jingle session is finished.</p>
+    <figure class="code-example" id="example-14"><figcaption><strong>Example 14.</strong> Responder acknowledges session-terminate<a class="anchor-link" href="#example-14"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.lit/balcony'
+    id='hz81vf48'
+    to='romeo@montague.lit/orchard'
+    type='result'/&gt;
+</pre></figure>
+  </div>
+<h2 id="rules">3.
+       Processing Rules and Usage Guidelines<a class="anchor-link" href="#rules"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <p class="" style="">The same processing rules and usage guidelines defined in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] apply to the Jingle IBB Transport Method.</p>
+<h2 id="support">4.
+       Determining Support<a class="anchor-link" href="#support"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <p class="" style="">To advertise its support for the Jingle In-Band Bytestreams Transport Method, when replying to <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0030.html">Service Discovery (XEP-0030)</a></span>  [<a href="#nt-idm45657604111504">5</a>] information requests an entity MUST return URNs for any version of this protocol that the entity supports -- e.g., "urn:xmpp:jingle:transports:ibb:1" for this version (see <a href="#registrar-versioning">Namespace Versioning</a> regarding the possibility of incrementing the version number).</p>
+  <figure class="code-example" id="example-15"><figcaption><strong>Example 15.</strong> Service discovery information request<a class="anchor-link" href="#example-15"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='romeo@montague.lit/orchard'
+    id='uw72g176'
+    to='juliet@capulet.lit/balcony'
+    type='get'&gt;
+  &lt;query xmlns='http://jabber.org/protocol/disco#info'/&gt;
+&lt;/iq&gt;
+</pre></figure>
+  <figure class="code-example" id="example-16"><figcaption><strong>Example 16.</strong> Service discovery information response<a class="anchor-link" href="#example-16"><abbr title="Link to this point in the document">¶</abbr></a></figcaption><pre class="prettyprint">
+&lt;iq from='juliet@capulet.lit/balcony'
+    id='uw72g176'
+    to='romeo@montague.lit/orchard'
+    type='result'&gt;
+  &lt;query xmlns='http://jabber.org/protocol/disco#info'&gt;
+    &lt;feature var='urn:xmpp:jingle:1'/&gt;
+    &lt;feature var='urn:xmpp:jingle:transports:ibb:1'/&gt;
+  &lt;/query&gt;
+&lt;/iq&gt;
+</pre></figure>
+  <p class="" style="">In order for an application to determine whether an entity supports this protocol, where possible it SHOULD use the dynamic, presence-based profile of service discovery defined in <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0115.html">Entity Capabilities (XEP-0115)</a></span>  [<a href="#nt-idm45657604104688">6</a>]. However, if an application has not received entity capabilities information from an entity, it SHOULD use explicit service discovery instead.</p>
+<h2 id="security">5.
+       Security Considerations<a class="anchor-link" href="#security"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <div class="indent"><h3 id="security-media">5.1 Encryption of Media<a class="anchor-link" href="#security-media"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">This specification, like <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] before it, does not directly support end-to-end encryption of the media sent over the transport.</p>
+  </div>
+  <div class="indent"><h3 id="security-base64">5.2 Use of Base64<a class="anchor-link" href="#security-base64"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">See <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0047.html">In-Band Bytestreams (XEP-0047)</a></span>  [<a href="#nt-idm45657604204080">2</a>] for security considerations related to the use of Base64.</p>
+  </div>
+<h2 id="iana">6.
+       IANA Considerations<a class="anchor-link" href="#iana"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <p class="" style="">This document requires no interaction with the <span class="ref" style=""><a href="http://www.iana.org/">Internet Assigned Numbers Authority (IANA)</a></span>  [<a href="#nt-idm45657604085424">7</a>].</p>
+<h2 id="registrar">7.
+       XMPP Registrar Considerations<a class="anchor-link" href="#registrar"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <div class="indent"><h3 id="registrar-ns">7.1 Protocol Namespaces<a class="anchor-link" href="#registrar-ns"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">The <span class="ref" style=""><a href="https://xmpp.org/registrar/">XMPP Registrar</a></span>  [<a href="#nt-idm45657604078016">8</a>] includes 'urn:xmpp:jingle:transports:ibb:1' in its registry of protocol namespaces at &lt;<a href="https://xmpp.org/registrar/namespaces.html">https://xmpp.org/registrar/namespaces.html</a>&gt;, as described in Section 4 of <span class="ref" style=""><a href="https://xmpp.org/extensions/xep-0053.html">XMPP Registrar Function (XEP-0053)</a></span>  [<a href="#nt-idm45657604070704">9</a>].</p>
+  </div>
+  <div class="indent"><h3 id="registrar-versioning">7.2 Protocol Versioning<a class="anchor-link" href="#registrar-versioning"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">If the protocol defined in this specification undergoes a revision that is not fully backwards-compatible with an older version, the XMPP Registrar shall increment the protocol version number found at the end of the XML namespaces defined herein, as described in Section 4 of <span class="ref">XEP-0053</span>.</p>
+  </div>
+  <div class="indent"><h3 id="registrar-transports">7.3 Jingle Transport Methods<a class="anchor-link" href="#registrar-transports"><abbr title="Link to this point in the document">¶</abbr></a></h3>
+    <p class="" style="">The XMPP Registrar includes "jingle-ibb" in its registry of Jingle transport methods at &lt;<a href="https://xmpp.org/registrar/jingle-transports.html">https://xmpp.org/registrar/jingle-transports.html</a>&gt;. The registry submission is as follows.</p>
+    <figure class="code"><figcaption></figcaption><pre class="prettyprint">
+&lt;transport&gt;
+  &lt;name&gt;ibb&lt;/name&gt;
+  &lt;desc&gt;
+    A method for data exchange over In-Band Bytestreams.
+  &lt;/desc&gt;
+  &lt;type&gt;streaming&lt;/type&gt;
+  &lt;doc&gt;XEP-0261&lt;/doc&gt;
+&lt;/transport&gt;
+</pre></figure>
+  </div>
+<h2 id="schema">8.
+       XML Schema<a class="anchor-link" href="#schema"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <figure class="code"><figcaption></figcaption><pre class="prettyprint">
+&lt;?xml version='1.0' encoding='UTF-8'?&gt;
+
+&lt;xs:schema
+    xmlns:xs='http://www.w3.org/2001/XMLSchema'
+    targetNamespace='urn:xmpp:jingle:transports:ibb:1'
+    xmlns='urn:xmpp:jingle:transports:ibb:1'
+    elementFormDefault='qualified'&gt;
+
+  &lt;xs:annotation&gt;
+    &lt;xs:documentation&gt;
+      The protocol documented by this schema is defined in
+      XEP-0261: http://www.xmpp.org/extensions/xep-0261.html
+    &lt;/xs:documentation&gt;
+  &lt;/xs:annotation&gt;
+
+   &lt;xs:element name='transport'&gt;
+     &lt;xs:complexType&gt;
+      &lt;xs:simpleContent&gt;
+        &lt;xs:extension base='empty'&gt;
+          &lt;xs:attribute name='block-size'
+                        type='xs:short'
+                        use='required'/&gt;
+          &lt;xs:attribute name='sid'
+                        type='xs:string'
+                        use='required'/&gt;
+          &lt;xs:attribute name='stanza'
+                        use='optional'
+                        default='iq'&gt;
+            &lt;xs:simpleType&gt;
+              &lt;xs:restriction base='xs:NCName'&gt;
+                &lt;xs:enumeration value='iq'/&gt;
+                &lt;xs:enumeration value='message'/&gt;
+              &lt;/xs:restriction&gt;
+            &lt;/xs:simpleType&gt;
+          &lt;/xs:attribute&gt;
+        &lt;/xs:extension&gt;
+      &lt;/xs:simpleContent&gt;
+     &lt;/xs:complexType&gt;
+   &lt;/xs:element&gt;
+
+  &lt;xs:simpleType name='empty'&gt;
+    &lt;xs:restriction base='xs:string'&gt;
+      &lt;xs:enumeration value=''/&gt;
+    &lt;/xs:restriction&gt;
+  &lt;/xs:simpleType&gt;
+
+&lt;/xs:schema&gt;
+</pre></figure>
+<h2 id="ack">9.
+       Acknowledgements<a class="anchor-link" href="#ack"><abbr title="Link to this point in the document">¶</abbr></a></h2>
+  <p class="" style="">Thanks to Paul Aurich, Fabio Forno, and Marcus Lundblad for their feedback.</p>
+<hr><a name="appendices"></a><h2>Appendices</h2><h3 id="appendix-docinfo">Appendix A: Document Information<a class="anchor-link" href="#appendix-docinfo"><abbr title="Link to this point in the document">¶</abbr></a></h3><dl class="compact"><dt>Series</dt><dd><a href="https://xmpp.org/extensions/">XEP</a></dd><dt>Number</dt><dd>0261</dd><dt>Publisher</dt><dd><a href="/xsf/">XMPP Standards Foundation</a></dd><dt>Status</dt><dd><a href="https://xmpp.org/extensions/xep-0001.html#states-Draft">Stable</a></dd><dt>Type</dt><dd><a href="https://xmpp.org/extensions/xep-0001.html#types-Standards%20Track">Standards Track</a></dd><dt>Version</dt><dd>1.0</dd><dt>Last Updated</dt><dd>2011-09-23</dd><dt>Approving Body</dt><dd><a href="https://xmpp.org/council/">XMPP Council</a></dd><dt>Dependencies</dt><dd>XMPP Core, <a href="xep-0047.html">XEP-0047</a></dd><dt>Supersedes</dt><dd>None</dd><dt>Superseded By</dt><dd>None</dd><dt>Short Name</dt><dd>jingle-ibb</dd><dt>Schema</dt><dd>
+        &lt;<a href="http://xmpp.org/schemas/jingle-transports-ibb.xsd">http://xmpp.org/schemas/jingle-transports-ibb.xsd</a>&gt;<br></dd><dt>Source Control</dt><dd><a class="standardsButton" href="https://github.com/xsf/xeps/blob/master/xep-0261.xml">HTML</a></dd></dl><p>
+          This document in other formats:
+          <a class="standardsButton" href="https://xmpp.org/extensions/xep-0261.xml">XML</a> 
+          <a class="standardsButton" href="https://xmpp.org/extensions/xep-0261.pdf">PDF</a></p><h3 id="appendix-authorinfo">Appendix B: Author Information<a class="anchor-link" href="#appendix-authorinfo"><abbr title="Link to this point in the document">¶</abbr></a></h3><h5>Peter Saint-Andre</h5><dl class="compact"><dt>Email</dt><dd><a href="mailto:stpeter@stpeter.im">stpeter@stpeter.im</a></dd><dt>JabberID</dt><dd><a href="xmpp:stpeter@jabber.org">stpeter@jabber.org</a></dd><dt>URI</dt><dd><a href="https://stpeter.im/">https://stpeter.im/</a></dd></dl><h3 id="appendix-legal">Appendix C: Legal Notices<a class="anchor-link" href="#appendix-legal"><abbr title="Link to this point in the document">¶</abbr></a></h3><div class="indent"><h4>Copyright</h4><p>This XMPP Extension Protocol is copyright © 1999 – 2024 by the <a href="https://xmpp.org/">XMPP Standards Foundation</a> (XSF).</p><h4>Permissions</h4><p>Permission is hereby granted, free of charge, to any person obtaining a copy of this specification (the "Specification"), to make use of the Specification without restriction, including without limitation the rights to implement the Specification in a software program, deploy the Specification in a network service, and copy, modify, merge, publish, translate, distribute, sublicense, or sell copies of the Specification, and to permit persons to whom the Specification is furnished to do so, subject to the condition that the foregoing copyright notice and this permission notice shall be included in all copies or substantial portions of the Specification. Unless separate permission is granted, modified works that are redistributed shall not contain misleading information regarding the authors, title, number, or publisher of the Specification, and shall not claim endorsement of the modified works by the authors, any organization or project to which the authors belong, or the XMPP Standards Foundation.</p><h4>Disclaimer of Warranty</h4><p class="box info">## NOTE WELL: This Specification is provided on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. ##</p><h4>Limitation of Liability</h4><p>In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall the XMPP Standards Foundation or any author of this Specification be liable for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising from, out of, or in connection with the Specification or the implementation, deployment, or other use of the Specification (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if the XMPP Standards Foundation or such author has been advised of the possibility of such damages.</p><h4>IPR Conformance</h4><p>This XMPP Extension Protocol has been contributed in full conformance with the XSF's Intellectual Property Rights Policy (a copy of which can be found at &lt;<a href="https://xmpp.org/about/xsf/ipr-policy">https://xmpp.org/about/xsf/ipr-policy</a>&gt; or obtained by writing to XMPP Standards Foundation, P.O. Box 787, Parker, CO 80134 USA).</p><h4>Visual Presentation</h4><p>The HTML representation (you are looking at) is maintained by the XSF. It is based on the <a href="http://yaml.de">YAML CSS Framework</a>, which is licensed under the terms of the <a href="https://creativecommons.org/licenses/by/2.0/">CC-BY-SA 2.0</a> license.</p></div><h3 id="appendix-xmpp">Appendix D: Relation to XMPP<a class="anchor-link" href="#appendix-xmpp"><abbr title="Link to this point in the document">¶</abbr></a></h3><p class="indent">The Extensible Messaging and Presence Protocol (XMPP) is defined in the XMPP Core (RFC 6120) and XMPP IM (RFC 6121) specifications contributed by the XMPP Standards Foundation to the Internet Standards Process, which is managed by the Internet Engineering Task Force in accordance with RFC 2026. Any protocol defined in this document has been developed outside the Internet Standards Process and is to be understood as an extension to XMPP rather than as an evolution, development, or modification of XMPP itself.</p><h3 id="appendix-discuss">Appendix E: Discussion Venue<a class="anchor-link" href="#appendix-discuss"><abbr title="Link to this point in the document">¶</abbr></a></h3><p class="indent">There exists a special venue for discussion related to the technology described in this document: the &lt;<a href="https://mail.jabber.org/mailman/listinfo/jingle">jingle@xmpp.org</a>&gt; mailing list.</p><p class="indent">The primary venue for discussion of XMPP Extension Protocols is the &lt;<a href="https://mail.jabber.org/mailman/listinfo/standards">standards@xmpp.org</a>&gt; discussion list.</p><p class="indent">Discussion on other xmpp.org discussion lists might also be appropriate; see &lt;<a href="https://xmpp.org/community/">https://xmpp.org/community/</a>&gt; for a complete list.</p><p class="indent">Errata can be sent to &lt;<a href="mailto:editor@xmpp.org">editor@xmpp.org</a>&gt;.</p><h3 id="appendix-conformance">Appendix F: Requirements Conformance<a class="anchor-link" href="#appendix-conformance"><abbr title="Link to this point in the document">¶</abbr></a></h3><p class="indent">
+          The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+          "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+          "MAY", and "OPTIONAL" in this document are to be interpreted as
+          described in <a href="https://tools.ietf.org/rfc/bcp/bcp14.txt">BCP 14</a>
+          [<a href="https://www.ietf.org/rfc/rfc2119.txt">RFC2119</a>]
+          [<a href="https://tools.ietf.org/rfc/rfc8174.txt">RFC8174</a>] when,
+          and only when, they appear in all capitals, as shown here.
+        </p><h3 id="appendix-notes">Appendix G: Notes<a class="anchor-link" href="#appendix-notes"><abbr title="Link to this point in the document">¶</abbr></a></h3><div class="indent"><p><a name="nt-idm45657604209984">1</a>. XEP-0166: Jingle &lt;<a href="https://xmpp.org/extensions/xep-0166.html">https://xmpp.org/extensions/xep-0166.html</a>&gt;.</p><p><a name="nt-idm45657604204080">2</a>. XEP-0047: In-Band Bytestreams &lt;<a href="https://xmpp.org/extensions/xep-0047.html">https://xmpp.org/extensions/xep-0047.html</a>&gt;.</p><p><a name="nt-idm45657604199360">3</a>. XEP-0260: Jingle SOCKS5 Bytestreams Transport Method &lt;<a href="https://xmpp.org/extensions/xep-0260.html">https://xmpp.org/extensions/xep-0260.html</a>&gt;.</p><p><a name="nt-idm45657604154624">4</a>. RFC 6120: Extensible Messaging and Presence Protocol (XMPP): Core &lt;<a href="http://tools.ietf.org/html/rfc6120">http://tools.ietf.org/html/rfc6120</a>&gt;.</p><p><a name="nt-idm45657604111504">5</a>. XEP-0030: Service Discovery &lt;<a href="https://xmpp.org/extensions/xep-0030.html">https://xmpp.org/extensions/xep-0030.html</a>&gt;.</p><p><a name="nt-idm45657604104688">6</a>. XEP-0115: Entity Capabilities &lt;<a href="https://xmpp.org/extensions/xep-0115.html">https://xmpp.org/extensions/xep-0115.html</a>&gt;.</p><p><a name="nt-idm45657604085424">7</a>. The Internet Assigned Numbers Authority (IANA) is the central coordinator for the assignment of unique parameter values for Internet protocols, such as port numbers and URI schemes. For further information, see &lt;<a href="http://www.iana.org/">http://www.iana.org/</a>&gt;.</p><p><a name="nt-idm45657604078016">8</a>. The XMPP Registrar maintains a list of reserved protocol namespaces as well as registries of parameters used in the context of XMPP extension protocols approved by the XMPP Standards Foundation. For further information, see &lt;<a href="https://xmpp.org/registrar/">https://xmpp.org/registrar/</a>&gt;.</p><p><a name="nt-idm45657604070704">9</a>. XEP-0053: XMPP Registrar Function &lt;<a href="https://xmpp.org/extensions/xep-0053.html">https://xmpp.org/extensions/xep-0053.html</a>&gt;.</p></div><h3 id="appendix-revs">Appendix H: Revision History<a class="anchor-link" href="#appendix-revs"><abbr title="Link to this point in the document">¶</abbr></a></h3><p>Note: Older versions of this specification might be available at <a href="https://xmpp.org/extensions/attic/">https://xmpp.org/extensions/attic/</a></p><ol class="revision-history"><li id="revision-history-v1.0"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-1.0.html">1.0</a> (2011-09-23)<a class="anchor-link" href="#revision-history-v1.0"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Per a vote of the XMPP Council, advanced specification from Experimental to Draft.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.8"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.8.html">0.8</a> (2011-08-31)<a class="anchor-link" href="#revision-history-v0.8"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Per feedback from the XMPP Council, modified the security considerations to remove the recommendation to use XTLS (since it is not longer being actively developed).</p><div class="revision-author">psa</div></li><li id="revision-history-v0.7"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.7.html">0.7</a> (2011-05-16)<a class="anchor-link" href="#revision-history-v0.7"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Further clarified order of layers, in particular the reuse of IBB &lt;open/&gt; and &lt;close/&gt; elements.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.6"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.6.html">0.6</a> (2011-03-07)<a class="anchor-link" href="#revision-history-v0.6"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Clarified error flows and handling of multiple IBB sessions within the bytestream.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.5"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.5.html">0.5</a> (2010-04-14)<a class="anchor-link" href="#revision-history-v0.5"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Incremented the protocol version from 0 to 1 because the changes in document version 0.4 are backward-incompatible.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.4"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.4.html">0.4</a> (2010-04-13)<a class="anchor-link" href="#revision-history-v0.4"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Added roundtrip for exchange of IBB &lt;open/&gt; element to provide proper layering between Jingle and IBB; defined how to close a single session within the bytestream; defined how to close the bytestream itself.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.3"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.3.html">0.3</a> (2010-02-16)<a class="anchor-link" href="#revision-history-v0.3"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Added negotiation flow for block size; corrected some slight errors.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.2"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.2.html">0.2</a> (2009-03-09)<a class="anchor-link" href="#revision-history-v0.2"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Minor changes to track modifications to XEP-0166; updated security considerations for consistency with other transport methods; added section on service discovery.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.1"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.1.html">0.1</a> (2009-02-19)<a class="anchor-link" href="#revision-history-v0.1"><abbr title="Link to this point in the document">¶</abbr></a></div><p class="" style="">Initial published version.</p><div class="revision-author">psa</div></li><li id="revision-history-v0.0.2"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.0.2.html">0.0.2</a> (2009-02-11)<a class="anchor-link" href="#revision-history-v0.0.2"><abbr title="Link to this point in the document">¶</abbr></a></div>Defined ability to add more session IDs to a bytestream using Jingle transport-info.<div class="revision-author">psa</div></li><li id="revision-history-v0.0.1"><div class="revision-head">Version <a href="https://xmpp.org/extensions/attic/xep-0261-0.0.1.html">0.0.1</a> (2009-02-10)<a class="anchor-link" href="#revision-history-v0.0.1"><abbr title="Link to this point in the document">¶</abbr></a></div>Rough draft.<div class="revision-author">psa</div></li></ol><h3 id="appendix-biblatex">Appendix I: Bib(La)TeX Entry</h3><pre>
+@report{saint-andre2009jingle-ibb,
+  title = {Jingle In-Band Bytestreams Transport Method},
+  author = {Saint-Andre, Peter},
+  type = {XEP},
+  number = {0261},
+  version = {1.0},
+  institution = {XMPP Standards Foundation},
+  url = {https://xmpp.org/extensions/xep-0261.html},
+  date = {2009-02-10/2011-09-23},
+}</pre><p>END</p></body></html>
