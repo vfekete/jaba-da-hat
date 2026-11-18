@@ -344,3 +344,29 @@ def test_system_events_parse_logind_and_networkmanager(qapp):
     ev.dispatch(sig(NM, "StateChanged", "u", (40,)))  # connecting: still down, no repeat
     ev.dispatch(sig(NM, "StateChanged", "u", (70,)))
     assert got == [("sleep", True), ("sleep", False), ("net", False), ("net", True)]
+
+
+def test_zoom_steps_reset_limits_and_persists(ctl, tmp_path):
+    from jaba_da_hat import config
+
+    base = ctl.uiFont.pointSizeF()
+    ctl.zoom(1)
+    assert ctl.zoomPercent == 110 and abs(ctl.uiFont.pointSizeF() - base * 1.1) < 0.01
+    assert abs(ctl.messageFont.pointSizeF() - base * 1.1) < 0.01 and abs(ctl.uiScale - 1.1) < 0.001
+    assert config.load(tmp_path / "cfg.json").zoom == 1  # remembered
+    for _ in range(30):
+        ctl.zoom(-1)
+    assert ctl.settings.zoom == config.ZOOM_MIN
+    ctl.zoom(0)
+    assert ctl.zoomPercent == 100
+    assert "zoom" not in ctl.settingsMap()
+
+
+def test_fonts_from_settings(ctl):
+    changed = []
+    ctl.fontsChanged.connect(lambda: changed.append(True))
+    family = ctl.fontFamilies[0]
+    ctl.saveSettings({"ui_font_family": family, "ui_font_size": 14, "message_font_family": "", "message_font_size": 12.5})
+    assert changed and ctl.uiFont.family() == family and ctl.uiFont.pointSizeF() == 14
+    assert ctl.messageFont.pointSizeF() == 12.5  # not truncated to an int
+    assert abs(ctl.uiScale - 14 / 10.5) < 0.001

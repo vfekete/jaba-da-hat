@@ -14,6 +14,9 @@ ApplicationWindow {
     minimumHeight: 420
     title: qsTr("Contacts — %1").arg(app.appName)
     Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    font: app.uiFont
+
+    Zoom { app: win.app }
     Material.accent: Material.DeepOrange
     Material.primary: "#c4451c"
 
@@ -52,7 +55,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             ToolButton {
                 text: "⋮"
-                font.pixelSize: 18
+                font.pixelSize: Math.round(18 * app.uiScale)
                 onClicked: moreMenu.popup()
                 Menu {
                     id: moreMenu
@@ -80,10 +83,10 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: app.presenceLabel + (app.connectionState === "connecting" ? qsTr(" (connecting…)") : "")
                       + (app.isMock ? qsTr(" · mock data") : "")
-                font.pixelSize: 12
+                font.pixelSize: Math.round(12 * app.uiScale)
                 elide: Text.ElideRight
             }
-            Label { text: win.selectedCount ? qsTr("%1 selected").arg(win.selectedCount) : ""; font.pixelSize: 12 }
+            Label { text: win.selectedCount ? qsTr("%1 selected").arg(win.selectedCount) : ""; font.pixelSize: Math.round(12 * app.uiScale) }
         }
     }
 
@@ -104,7 +107,7 @@ ApplicationWindow {
             Layout.leftMargin: 12
             Layout.rightMargin: 12
             wrapMode: Text.Wrap
-            font.pixelSize: 11
+            font.pixelSize: Math.round(11 * app.uiScale)
             opacity: 0.6
             text: qsTr("Click selects (Ctrl+click adds), double-click opens chat. Drag a contact between rows to move it to that group, onto a contact to create a new group with both, or onto a group header.")
         }
@@ -156,7 +159,7 @@ ApplicationWindow {
                 x: 12
                 text: (hdr.section || qsTr("Ungrouped")).toUpperCase()
                 font.bold: true
-                font.pixelSize: 11
+                font.pixelSize: Math.round(11 * app.uiScale)
                 opacity: 0.75
             }
             DropArea {
@@ -225,14 +228,14 @@ ApplicationWindow {
                     Label { text: row.name; font.bold: row.unread > 0; elide: Text.ElideRight; Layout.fillWidth: true }
                     Label {
                         text: row.jid + (row.statusText ? " — " + row.statusText : "")
-                        font.pixelSize: 11; opacity: 0.6; elide: Text.ElideRight; Layout.fillWidth: true
+                        font.pixelSize: Math.round(11 * app.uiScale); opacity: 0.6; elide: Text.ElideRight; Layout.fillWidth: true
                     }
                 }
                 Rectangle {
                     visible: row.unread > 0
                     width: 22; height: 22; radius: 11
                     color: "#e01b24"
-                    Label { anchors.centerIn: parent; text: row.unread; color: "white"; font.pixelSize: 11; font.bold: true }
+                    Label { anchors.centerIn: parent; text: row.unread; color: "white"; font.pixelSize: Math.round(11 * app.uiScale); font.bold: true }
                 }
                 ToolButton {
                     text: "💬"
@@ -352,7 +355,7 @@ ApplicationWindow {
             TextField { id: nickField; Layout.fillWidth: true; placeholderText: qsTr("Nickname (optional)") }
             ComboBox { id: groupBox; Layout.fillWidth: true; editable: true; model: app.groups; displayText: editText || qsTr("Group (optional)") }
             Label {
-                Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11; opacity: 0.6
+                Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.round(11 * app.uiScale); opacity: 0.6
                 text: qsTr("A subscription request is sent; the contact appears online once they accept.")
             }
         }
@@ -452,7 +455,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 opacity: 0.7
-                font.pixelSize: 12
+                font.pixelSize: Math.round(12 * app.uiScale)
                 text: app.blockedJids.length === 0 ? qsTr("Nobody is blocked.")
                       : qsTr("Blocked people can't message you or see your presence. Unblocking doesn't add them back to your contacts.")
             }
@@ -488,7 +491,7 @@ ApplicationWindow {
         onAccepted: app.removeGroups(Object.keys(chosen))
         ColumnLayout {
             anchors.fill: parent
-            Label { text: qsTr("Contacts in removed groups are kept."); opacity: 0.7; font.pixelSize: 12 }
+            Label { text: qsTr("Contacts in removed groups are kept."); opacity: 0.7; font.pixelSize: Math.round(12 * app.uiScale) }
             ListView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true

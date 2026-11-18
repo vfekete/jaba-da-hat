@@ -425,6 +425,44 @@ blocked. Now a manual server uses direct TLS only on 5223 (the XEP-0368
 convention) and STARTTLS on any other port. Without a manual server, DNS SRV
 records name the method for each address, as before.
 
+## src/jaba_da_hat/core.py (cont.)
+
+### [25] Fonts, zoom, and the message input that follows the cursor
+
+**Fonts.** Settings hold an interface and a message font (family, size in
+points; empty / 0 = default). The controller turns them into two `QFont`s
+that every window binds to (`font: app.uiFont` on the window, `app.messageFont`
+on message bubbles and the input). The windows were designed with fixed pixel
+sizes (14 px body, 12 px small print, 18 px icons …); instead of re-designing,
+each of those is multiplied by `app.uiScale` = interface size × zoom ÷ 10.5 pt
+(10.5 pt = 14 px at 96 dpi, the size they were designed at), so headings and
+small print keep their proportions. Defaults reproduce the old look.
+
+**Zoom.** One level for the whole app (10 % per step, 59 %–259 %), stored in
+the settings and applied on top of both fonts. `Zoom.qml` adds Ctrl +
+(`StandardKey.ZoomIn`, plus Ctrl = for keyboards where + needs Shift), Ctrl −
+and Ctrl 0 to every window. A sequence must not appear twice in one Shortcut:
+Qt then reports it as ambiguous and never fires it.
+
+**Input box.** The reported bug: while typing a long message, the last line
+was cut off and only its top was visible. It did not reproduce offscreen, but
+the cause is an ordering race in the old `ScrollView` + `TextArea`: when a new
+line wraps, the view scrolls to the cursor before the taller content height
+is applied, so the scroll is clamped to the old height and stops short by part
+of a line (more likely with bigger fonts and on a real compositor). The input
+is now a plain `Flickable` that scrolls to the cursor line *including* the
+text area's padding, deferred with `Qt.callLater` until after layout, and
+again whenever the content or view height changes. A test types wrapping text
+character by character at 100 % and 177 % zoom and checks the cursor line is
+fully visible after every key.
+
+**Typing goes to the message.** The input's `focus: true` sits inside a
+`Pane`, which is its own focus scope, so the input never got *active* focus
+when the window opened. It is now focused explicitly on open and whenever the
+window becomes active (unless a dialog is open); header buttons and Send no
+longer take focus; and a printable key pressed while something else has focus
+(e.g. after selecting text in a bubble) is inserted into the input.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

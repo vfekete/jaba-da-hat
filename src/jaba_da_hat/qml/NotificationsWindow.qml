@@ -13,6 +13,9 @@ ApplicationWindow {
     minimumHeight: 300
     title: qsTr("Notifications — %1").arg(app.appName)
     Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    font: app.uiFont
+
+    Zoom { app: win.app }
     Material.accent: Material.DeepOrange
     Material.primary: "#c4451c"
 
@@ -21,7 +24,7 @@ ApplicationWindow {
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 12
-            Label { text: qsTr("Notifications"); font.bold: true; font.pixelSize: 16; Layout.fillWidth: true }
+            Label { text: qsTr("Notifications"); font.bold: true; font.pixelSize: Math.round(16 * app.uiScale); Layout.fillWidth: true }
             ToolButton { text: qsTr("Clear messages"); onClicked: app.clearNotifications() }
         }
     }
@@ -60,7 +63,7 @@ ApplicationWindow {
                         color: item.kind === "error" ? Material.color(Material.Red) : Material.foreground
                         Layout.fillWidth: true
                     }
-                    Label { text: item.time; opacity: 0.6; font.pixelSize: 12 }
+                    Label { text: item.time; opacity: 0.6; font.pixelSize: Math.round(12 * app.uiScale) }
                 }
                 Label { text: item.text; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 RowLayout {

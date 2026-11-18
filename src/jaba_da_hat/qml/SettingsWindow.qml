@@ -15,6 +15,9 @@ ApplicationWindow {
     minimumHeight: 480
     title: qsTr("Settings — %1").arg(app.appName)
     Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    font: app.uiFont
+
+    Zoom { app: win.app }
     Material.accent: Material.DeepOrange
     Material.primary: "#c4451c"
 
@@ -36,6 +39,10 @@ ApplicationWindow {
             start_at_login: startAtLogin.checked,
             theme: ["system", "light", "dark"][theme.currentIndex],
             notification_style: ["toast", "gnome", "both"][notifStyle.currentIndex],
+            ui_font_family: uiFont.family,
+            ui_font_size: uiFont.size,
+            message_font_family: msgFont.family,
+            message_font_size: msgFont.size,
             send_typing: sendTyping.checked,
             show_typing: showTyping.checked,
             download_dir: downloadDir.text.trim()
@@ -99,7 +106,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.topMargin: 8
                     wrapMode: Text.Wrap
-                    font.pixelSize: 11
+                    font.pixelSize: Math.round(11 * app.uiScale)
                     opacity: 0.65
                     text: qsTr("The password is stored in ~/.config/jaba-da-hat/config.json, readable only by your user (mode 0600).")
                 }
@@ -107,57 +114,91 @@ ApplicationWindow {
         }
 
         // ---- Appearance
-        ColumnLayout {
-            spacing: 12
-            Label { text: qsTr("Theme") ; font.bold: true }
-            ComboBox {
-                id: theme
-                Layout.preferredWidth: 260
-                model: [qsTr("Follow system"), qsTr("Light"), qsTr("Dark")]
-                currentIndex: Math.max(0, ["system", "light", "dark"].indexOf(win.s.theme || "system"))
+        ScrollView {
+            contentWidth: availableWidth
+            ColumnLayout {
+                width: parent.width
+                spacing: 12
+                Label { text: qsTr("Theme") ; font.bold: true }
+                ComboBox {
+                    id: theme
+                    Layout.preferredWidth: 260
+                    model: [qsTr("Follow system"), qsTr("Light"), qsTr("Dark")]
+                    currentIndex: Math.max(0, ["system", "light", "dark"].indexOf(win.s.theme || "system"))
+                }
+                Label {
+                    text: qsTr("“Follow system” switches automatically when GNOME's dark style is toggled.")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: Math.round(12 * app.uiScale)
+                }
+                Label { text: qsTr("Notifications"); font.bold: true; Layout.topMargin: 12 }
+                ComboBox {
+                    id: notifStyle
+                    Layout.preferredWidth: 260
+                    model: [qsTr("Own toast (top right)"), qsTr("GNOME notification"), qsTr("Both")]
+                    currentIndex: Math.max(0, ["toast", "gnome", "both"].indexOf(win.s.notification_style || "toast"))
+                }
+                Label {
+                    text: qsTr("GNOME hides its notification banners while “Do Not Disturb” is on; the own toast is shown regardless. The tray icon always shakes on new activity.")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: Math.round(12 * app.uiScale)
+                }
+                Label { text: qsTr("Interface font"); font.bold: true; Layout.topMargin: 12 }
+                FontPicker {
+                    id: uiFont
+                    app: win.app
+                    family: win.s.ui_font_family || ""
+                    size: win.s.ui_font_size || 0
+                    previewText: qsTr("Contacts · Settings · Notifications")
+                }
+                Label { text: qsTr("Message font"); font.bold: true; Layout.topMargin: 8 }
+                FontPicker {
+                    id: msgFont
+                    app: win.app
+                    family: win.s.message_font_family || ""
+                    size: win.s.message_font_size || 0
+                }
+                RowLayout {
+                    Layout.topMargin: 8
+                    spacing: 8
+                    Label { text: qsTr("Zoom: %1 %").arg(app.zoomPercent) }
+                    Button { text: qsTr("Reset"); flat: true; enabled: app.zoomPercent !== 100; onClicked: app.zoom(0) }
+                }
+                Label {
+                    text: qsTr("Ctrl + / Ctrl − / Ctrl 0 in any window make all text bigger, smaller or back to normal. The tray menu is drawn by GNOME and keeps the system font.")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: Math.round(12 * app.uiScale)
+                }
             }
-            Label {
-                text: qsTr("“Follow system” switches automatically when GNOME's dark style is toggled.")
-                wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: 12
-            }
-            Label { text: qsTr("Notifications"); font.bold: true; Layout.topMargin: 12 }
-            ComboBox {
-                id: notifStyle
-                Layout.preferredWidth: 260
-                model: [qsTr("Own toast (top right)"), qsTr("GNOME notification"), qsTr("Both")]
-                currentIndex: Math.max(0, ["toast", "gnome", "both"].indexOf(win.s.notification_style || "toast"))
-            }
-            Label {
-                text: qsTr("GNOME hides its notification banners while “Do Not Disturb” is on; the own toast is shown regardless. The tray icon always shakes on new activity.")
-                wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: 12
-            }
-            Item { Layout.fillHeight: true }
         }
 
         // ---- Privacy
-        ColumnLayout {
-            spacing: 4
-            CheckBox { id: sendTyping; text: qsTr("Let contacts see when I am typing"); checked: win.s.send_typing !== false }
-            CheckBox { id: showTyping; text: qsTr("Show when contacts are typing"); checked: win.s.show_typing !== false }
-            Label {
-                text: qsTr("Typing notifications use XEP-0085 chat states. Conversations are kept in memory only while their window is open and are never written to disk. Pictures and files are never downloaded automatically.")
-                wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: 12; Layout.topMargin: 8
+        ScrollView {
+            contentWidth: availableWidth
+            ColumnLayout {
+                width: parent.width
+                spacing: 4
+                CheckBox { id: sendTyping; text: qsTr("Let contacts see when I am typing"); checked: win.s.send_typing !== false }
+                CheckBox { id: showTyping; text: qsTr("Show when contacts are typing"); checked: win.s.show_typing !== false }
+                Label {
+                    text: qsTr("Typing notifications use XEP-0085 chat states. Conversations are kept in memory only while their window is open and are never written to disk. Pictures and files are never downloaded automatically.")
+                    wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: Math.round(12 * app.uiScale); Layout.topMargin: 8
+                }
             }
-            Item { Layout.fillHeight: true }
         }
 
         // ---- General
-        ColumnLayout {
-            spacing: 8
-            CheckBox { id: startAtLogin; text: qsTr("Start when I log in to GNOME"); checked: win.s.start_at_login === true }
-            Label { text: qsTr("Download folder"); font.bold: true; Layout.topMargin: 8 }
-            RowLayout {
-                Layout.fillWidth: true
-                TextField { id: downloadDir; Layout.fillWidth: true; text: win.s.download_dir || "" }
-                Button { text: qsTr("Choose…"); onClicked: folderDialog.open() }
+        ScrollView {
+            contentWidth: availableWidth
+            ColumnLayout {
+                width: parent.width
+                spacing: 8
+                CheckBox { id: startAtLogin; text: qsTr("Start when I log in to GNOME"); checked: win.s.start_at_login === true }
+                Label { text: qsTr("Download folder"); font.bold: true; Layout.topMargin: 8 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField { id: downloadDir; Layout.fillWidth: true; text: win.s.download_dir || "" }
+                    Button { text: qsTr("Choose…"); onClicked: folderDialog.open() }
+                }
+                Label { text: qsTr("Version %1").arg(app.version); opacity: 0.6; Layout.topMargin: 16 }
             }
-            Label { text: qsTr("Version %1").arg(app.version); opacity: 0.6; Layout.topMargin: 16 }
-            Item { Layout.fillHeight: true }
         }
     }
 

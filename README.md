@@ -7,7 +7,7 @@ No other protocols, no plugins: just XMPP done properly.
 
 Why? Because Pidgin crashes on Ubuntu 26.06 and psi too and others are, well, lame.
 
-> **Status: 1.0.3.** Connects to real XMPP servers (login, contacts, presence,
+> **Status: 1.1.0.** Connects to real XMPP servers (login, contacts, presence,
 > subscriptions, messages, typing, server history) and transfers files over Jingle or HTTP
 > Upload, with pause / resume, and encrypts chats and files with OMEMO (you approve every device,
 > per chat window). See [docs/PLAN.md](docs/PLAN.md).
@@ -68,9 +68,9 @@ instance with another `--config` file can log in as `alice@localhost` to chat wi
 ## Build a single binary
 
 ```bash
-./build.sh                  # → build/jdh-<version>, e.g. build/jdh-1.0.3
-./build/jdh-1.0.3 --register     # register for your user: launcher (.desktop) + icon
-./build/jdh-1.0.3 --unregister   # remove launcher, autostart entry and icon
+./build.sh                  # → build/jdh-<version>, e.g. build/jdh-1.1.0
+./build/jdh-1.1.0 --register     # register for your user: launcher (.desktop) + icon
+./build/jdh-1.1.0 --unregister   # remove launcher, autostart entry and icon
 ```
 
 At every start the binary checks the registration: if the app is not registered it registers

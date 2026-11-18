@@ -11,6 +11,7 @@ from jaba_da_hat import APP_ID
 
 THEMES = ("system", "light", "dark")
 NOTIFICATION_STYLES = ("toast", "gnome", "both")
+ZOOM_MIN, ZOOM_MAX = -5, 10  # 59 % … 259 %
 
 
 def config_dir() -> Path:
@@ -39,6 +40,11 @@ class Settings:
     # Appearance
     theme: str = "system"
     notification_style: str = "toast"  # toast | gnome | both
+    ui_font_family: str = ""  # "" = system default
+    ui_font_size: float = 0.0  # points; 0 = default
+    message_font_family: str = ""
+    message_font_size: float = 0.0
+    zoom: int = 0  # Ctrl +/−/0 steps of 10 %, applies to both fonts
     # Privacy
     send_typing: bool = True
     show_typing: bool = True
@@ -81,6 +87,7 @@ def load(path: Path | None = None) -> Settings:
     s.normalize()
     if s.notification_style not in NOTIFICATION_STYLES:
         s.notification_style = "toast"
+    s.zoom = max(ZOOM_MIN, min(ZOOM_MAX, int(s.zoom or 0)))
     return s
 
 

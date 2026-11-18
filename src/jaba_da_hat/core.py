@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Property, Signal, Slot
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlEngine
 
 from jaba_da_hat import APP_NAME, __version__, autostart, config
@@ -19,6 +19,8 @@ from jaba_da_hat.models import PRESENCE_LABELS, PRESENCES, UNGROUPED, Contact, N
 log = logging.getLogger(__name__)
 clog = logging.getLogger("jaba_da_hat.connection")
 RECONNECT_DELAYS_S = (3, 10, 30, 60, 120, 300)  # then stays at the last value
+DEFAULT_FONT_PT = 10.5  # the size the windows were designed at (14 px at 96 dpi); "default" in Settings
+ZOOM_STEP = 1.1
 QML_DIR = Path(__file__).resolve().parent / "qml"
 
 
@@ -33,6 +35,7 @@ class AppController(QObject):
     notify = Signal(str, str, str, str)  # title, body, jid ("" = not a chat), kind: message | file | note
     activityChanged = Signal()  # file offers / transfers changed (tray icon)
     readyToSleep = Signal()  # offline after a suspend request: the system may sleep now
+    fontsChanged = Signal()
 
     def __init__(self, backend: Backend, settings: config.Settings, settings_path: Path | None = None,
                  engine: QQmlApplicationEngine | None = None, parent=None):
@@ -99,6 +102,33 @@ class AppController(QObject):
 
     darkTheme = Property(bool, _dark, notify=themeChanged)
 
+    # ---- fonts and zoom — see docs/comments-details.md [25]
+    def _zoom_factor(self) -> float:
+        return ZOOM_STEP ** self.settings.zoom
+
+    def _font(self, family: str, size: float) -> QFont:
+        f = QFont(family) if family else QFont()
+        f.setPointSizeF((size or DEFAULT_FONT_PT) * self._zoom_factor())
+        return f
+
+    uiFont = Property(QFont, lambda s: s._font(s.settings.ui_font_family, s.settings.ui_font_size), notify=fontsChanged)
+    messageFont = Property(QFont, lambda s: s._font(s.settings.message_font_family, s.settings.message_font_size),
+                           notify=fontsChanged)
+    # Multiplier for the windows' fixed pixel sizes, so headings and small print follow the interface font.
+    uiScale = Property(float, lambda s: (s.settings.ui_font_size or DEFAULT_FONT_PT) * s._zoom_factor() / DEFAULT_FONT_PT,
+                       notify=fontsChanged)
+    zoomPercent = Property(int, lambda s: round(100 * s._zoom_factor()), notify=fontsChanged)
+    fontFamilies = Property(list, lambda s: sorted(set(QFontDatabase.families()), key=str.lower), constant=True)
+
+    @Slot(int)
+    def zoom(self, step: int) -> None:
+        """+1 / −1: bigger / smaller by 10 %; 0: back to 100 %."""
+        level = 0 if step == 0 else max(config.ZOOM_MIN, min(config.ZOOM_MAX, self.settings.zoom + step))
+        if level != self.settings.zoom:
+            self.settings.zoom = level
+            self._persist()
+            self.fontsChanged.emit()
+
     def set_system_dark(self, dark: bool) -> None:
         if dark != self._system_dark:
             self._system_dark = dark
@@ -109,6 +139,7 @@ class AppController(QObject):
         d = asdict(self.settings)
         d.pop("local_groups")
         d.pop("history_since")
+        d.pop("zoom")  # changed with Ctrl +/−/0, not in the form
         d["start_at_login"] = autostart.is_enabled()
         return d
 
@@ -118,7 +149,7 @@ class AppController(QObject):
         old_account = (self.settings.jid, self.settings.password, self.settings.server, self.settings.port,
                        self.settings.resource, self.settings.require_tls)
         for k, v in values.items():
-            if hasattr(self.settings, k) and k not in ("local_groups", "history_since"):
+            if hasattr(self.settings, k) and k not in ("local_groups", "history_since", "zoom"):
                 cur = getattr(self.settings, k)
                 setattr(self.settings, k, type(cur)(v) if cur is not None else v)
         if self.settings.theme not in config.THEMES:
@@ -130,6 +161,7 @@ class AppController(QObject):
         except OSError as exc:
             self._on_error(f"Could not update autostart entry: {exc}")
         self.themeChanged.emit()
+        self.fontsChanged.emit()
         self.settingsChanged.emit()
         new_account = (self.settings.jid, self.settings.password, self.settings.server, self.settings.port,
                        self.settings.resource, self.settings.require_tls)

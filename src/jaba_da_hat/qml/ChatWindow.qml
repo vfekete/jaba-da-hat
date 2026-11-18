@@ -16,6 +16,9 @@ ApplicationWindow {
     minimumHeight: 380
     title: session.name + " — " + app.appName
     Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    font: app.uiFont
+
+    Zoom { app: win.app }
     Material.accent: Material.DeepOrange
     Material.primary: "#c4451c"
 
@@ -25,7 +28,11 @@ ApplicationWindow {
     // the HTML comes from textutil.linkify, so only our own <a> tags exist
     function styled(html) { return html.replace(/<a href=/g, '<a style="color:' + linkColor + '" href=') }
 
-    onActiveChanged: session.setWindowActive(active)
+    onActiveChanged: {
+        session.setWindowActive(active)
+        if (active && !trustDialog.visible && !closeDialog.visible) input.forceActiveFocus()
+    }
+    Component.onCompleted: input.forceActiveFocus()
     onClosing: (close) => {
         if (!confirmedClose && session.activeTransferCount() > 0) {
             close.accepted = false
@@ -46,16 +53,17 @@ ApplicationWindow {
             ColumnLayout {
                 spacing: 0
                 Layout.fillWidth: true
-                Label { text: session.name; font.bold: true; font.pixelSize: 16; elide: Text.ElideRight; Layout.fillWidth: true }
+                Label { text: session.name; font.bold: true; font.pixelSize: Math.round(16 * app.uiScale); elide: Text.ElideRight; Layout.fillWidth: true }
                 Label {
                     text: session.jid + (session.statusText ? " — " + session.statusText : "")
-                    font.pixelSize: 12; opacity: 0.85; elide: Text.ElideRight; Layout.fillWidth: true
+                    font.pixelSize: Math.round(12 * app.uiScale); opacity: 0.85; elide: Text.ElideRight; Layout.fillWidth: true
                 }
             }
             ToolButton {
                 id: lockBtn
+                focusPolicy: Qt.NoFocus
                 text: session.encrypted ? "🔒" : "🔓"
-                font.pixelSize: 18
+                font.pixelSize: Math.round(18 * app.uiScale)
                 checkable: true
                 checked: session.encrypted
                 onToggled: session.encrypted = checked
@@ -67,7 +75,8 @@ ApplicationWindow {
             }
             ToolButton {
                 text: "📎"
-                font.pixelSize: 18
+                focusPolicy: Qt.NoFocus
+                font.pixelSize: Math.round(18 * app.uiScale)
                 enabled: app.connectionState === "online"
                 onClicked: fileDialog.open()
                 ToolTip.visible: hovered
@@ -88,8 +97,9 @@ ApplicationWindow {
         anchors.centerIn: parent
         modal: true
         title: qsTr("Transfers in progress")
+        width: Math.min(win.width - 32, Math.round(340 * app.uiScale))  // explicit: content width depends on it
         standardButtons: Dialog.Yes | Dialog.No
-        Label { text: qsTr("Closing this chat cancels its running file transfers. Close anyway?"); wrapMode: Text.Wrap; width: 280 }
+        contentItem: Label { text: qsTr("Closing this chat cancels its running file transfers. Close anyway?"); wrapMode: Text.Wrap }
         onAccepted: { win.confirmedClose = true; win.close() }
     }
 
@@ -150,7 +160,7 @@ ApplicationWindow {
                                 Label {
                                     text: modelData.fingerprint
                                     font.family: "monospace"
-                                    font.pixelSize: 12
+                                    font.pixelSize: Math.round(12 * app.uiScale)
                                     wrapMode: Text.WrapAnywhere
                                     Layout.fillWidth: true
                                 }
@@ -162,7 +172,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WrapAnywhere
-                font.pixelSize: 12
+                font.pixelSize: Math.round(12 * app.uiScale)
                 opacity: 0.8
                 text: qsTr("This device: ") + (trustDialog.req.own ?? "")
             }
@@ -192,6 +202,15 @@ ApplicationWindow {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
+        // Typing while something else has focus (e.g. after selecting text in a bubble) goes to the input.
+        Keys.onPressed: (ev) => {
+            const plain = !(ev.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+            if (plain && ev.text.length > 0 && ev.text.charCodeAt(0) >= 32 && !input.activeFocus) {
+                input.forceActiveFocus()
+                input.insert(input.cursorPosition, ev.text)
+                ev.accepted = true
+            }
+        }
 
         ListView {
             id: list
@@ -243,7 +262,7 @@ ApplicationWindow {
                             selectByMouse: true
                             color: win.Material.foreground
                             selectionColor: win.Material.accent
-                            font.pixelSize: 14
+                            font: app.messageFont
                             onLinkActivated: (link) => session.openLink(link)
                             HoverHandler { cursorShape: body.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor }
                         }
@@ -253,7 +272,7 @@ ApplicationWindow {
                             anchors.rightMargin: 10
                             anchors.top: body.bottom
                             text: (row.encrypted ? "🔒 " : "") + row.time
-                            font.pixelSize: 10
+                            font.pixelSize: Math.round(10 * app.uiScale)
                             opacity: 0.6
                         }
                     }
@@ -267,13 +286,13 @@ ApplicationWindow {
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
                         font.italic: true
-                        font.pixelSize: 12
+                        font.pixelSize: Math.round(12 * app.uiScale)
                         opacity: 0.65
                     }
                 }
                 Component {
                     id: fileComp
-                    TransferCard { transfer: row.transfer; session: win.session; width: Math.min(row.maxW, 340) }
+                    TransferCard { transfer: row.transfer; session: win.session; uiScale: app.uiScale; width: Math.min(row.maxW, 340 * app.uiScale) }
                 }
             }
         }
@@ -284,7 +303,7 @@ ApplicationWindow {
             text: qsTr("%1 is typing…").arg(session.name)
             visible: session.remoteTyping
             font.italic: true
-            font.pixelSize: 12
+            font.pixelSize: Math.round(12 * app.uiScale)
             opacity: 0.7
         }
 
@@ -304,14 +323,35 @@ ApplicationWindow {
             RowLayout {
                 anchors.fill: parent
                 spacing: 6
-                ScrollView {
+                // Own Flickable: scroll to the cursor only after the new height is laid out — see docs/comments-details.md [25].
+                Flickable {
+                    id: inputFlick
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(120, Math.max(44, input.implicitHeight))
+                    Layout.preferredHeight: Math.min(Math.round(120 * app.uiScale) + input.topPadding + input.bottomPadding,
+                                                     input.implicitHeight)
+                    contentWidth: width
+                    contentHeight: input.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: inputFlick.contentHeight > inputFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
+                    onContentHeightChanged: Qt.callLater(showCursor)
+                    onHeightChanged: Qt.callLater(showCursor)
+                    function showCursor() {
+                        const r = input.cursorRectangle
+                        const top = r.y - input.topPadding
+                        const bottom = r.y + r.height + input.bottomPadding
+                        const maxY = Math.max(0, contentHeight - height)
+                        if (top < contentY) contentY = Math.max(0, top)
+                        else if (bottom > contentY + height) contentY = Math.min(maxY, bottom - height)
+                    }
                     TextArea {
                         id: input
+                        width: inputFlick.width
                         placeholderText: qsTr("Message (Shift+Enter: new line)")
                         wrapMode: TextArea.Wrap
+                        font: app.messageFont
                         focus: true
+                        onCursorRectangleChanged: Qt.callLater(inputFlick.showCursor)
                         onTextChanged: session.textEdited(text)
                         Keys.onReturnPressed: (ev) => {
                             if (ev.modifiers & Qt.ShiftModifier) { ev.accepted = false; return }
@@ -327,6 +367,7 @@ ApplicationWindow {
                 }
                 Button {
                     text: qsTr("Send")
+                    focusPolicy: Qt.NoFocus
                     highlighted: true
                     enabled: app.connectionState === "online" && input.text.trim().length > 0
                     onClicked: input.send()

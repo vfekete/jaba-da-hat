@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-18
+
+### Added
+- Settings → Appearance: **interface font** and **message font** (family and size, with preview).
+- **Zoom** with Ctrl + / Ctrl − / Ctrl 0 (reset) in every window: all text 10 % bigger or smaller
+  per step (59 %–259 %), remembered; Settings shows the level with a Reset button.
+
+### Fixed
+- Typing right after opening a chat went nowhere: the message box now has the focus when the
+  window opens or is activated, and typing while something else is focused goes into it.
+- A long message being typed could hide its last line (only its top visible): the input box now
+  scrolls to the cursor line after the layout has settled.
+- Settings pages other than Account could not scroll; long pages (and big zoom) cut content off.
+
 ## [1.0.3] — 2026-11-16
 
 ### Changed

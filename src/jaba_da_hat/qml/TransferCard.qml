@@ -8,6 +8,7 @@ Pane {
     id: card
     required property var transfer
     required property var session
+    property real uiScale: 1  // follows the interface font / zoom of the window
     padding: 10
     Material.elevation: 1
 
@@ -29,7 +30,7 @@ Pane {
         spacing: 4
         RowLayout {
             spacing: 8
-            Label { text: (card.transfer?.incoming ?? false) ? "⬇" : "⬆"; font.pixelSize: 18 }
+            Label { text: (card.transfer?.incoming ?? false) ? "⬇" : "⬆"; font.pixelSize: Math.round(18 * card.uiScale) }
             ColumnLayout {
                 spacing: 0
                 Label {
@@ -42,7 +43,7 @@ Pane {
                     text: (card.transfer?.sizeText ?? "") + " · " + (card.labels[card.st] || card.st)
                           + ((card.transfer?.detail ?? "") ? " · " + (card.transfer?.detail ?? "") : "")
                     opacity: 0.7
-                    font.pixelSize: 12
+                    font.pixelSize: Math.round(12 * card.uiScale)
                     elide: Text.ElideRight
                     Layout.maximumWidth: 260
                 }

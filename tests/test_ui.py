@@ -202,3 +202,80 @@ def test_tray_menu_layout_and_contact_overflow(ui):
     tray.rebuild_menu()
     titles = [a.text() for a in tray.menu.actions()]
     assert "Ungrouped" not in titles and "…" not in titles and len([t for t in titles if t.startswith("User ")]) == 10
+
+
+def _items(win):
+    def walk(it):
+        yield it
+        for c in it.childItems():
+            yield from walk(c)
+    return list(walk(win.contentItem()))
+
+
+def _chat_input(win):
+    return next(o for o in _items(win) if "Shift+Enter" in (o.property("placeholderText") or ""))
+
+
+def test_chat_input_has_focus_and_catches_typing(ui, qml_messages):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from conftest import wait_until
+
+    ui.openChat("alice@example.org")
+    win = ui.windows["alice@example.org"]
+    wait_until(lambda: False, 200)
+    inp = _chat_input(win)
+    assert inp.property("activeFocus")  # typing right after opening goes into the message
+    QTest.keyClick(win, "h")
+    QTest.keyClick(win, "i")
+    assert inp.property("text") == "hi"
+    win.contentItem().forceActiveFocus()  # focus elsewhere (e.g. after selecting text in a bubble)
+    QTest.keyClick(win, "!")
+    assert inp.property("activeFocus") and inp.property("text") == "hi!"
+    QTest.keyClick(win, Qt.Key_Plus, Qt.ControlModifier)
+    QTest.keyClick(win, Qt.Key_Equal, Qt.ControlModifier)
+    assert ui.zoomPercent == 121
+    QTest.keyClick(win, Qt.Key_0, Qt.ControlModifier)
+    assert ui.zoomPercent == 100
+    assert inp.property("text") == "hi!"  # shortcuts don't type into the message
+    win.close()
+    assert qml_messages == []
+
+
+@pytest.mark.parametrize("zoom", [0, 6])
+def test_chat_input_keeps_the_cursor_line_visible(ui, qml_messages, zoom):
+    from PySide6.QtTest import QTest
+
+    from conftest import wait_until
+
+    ui.settings.zoom = zoom
+    ui.fontsChanged.emit()
+    ui.openChat("alice@example.org")
+    win = ui.windows["alice@example.org"]
+    wait_until(lambda: False, 200)
+    inp = _chat_input(win)
+    flick = inp.parentItem().parentItem()
+    for ch in "the quick brown fox jumps over the lazy dog " * 10:  # wraps over many lines
+        QTest.keyClick(win, ch)
+        wait_until(lambda: False, 1)
+        r = inp.property("cursorRectangle")
+        bottom = r.y() + r.height()
+        assert bottom <= flick.property("contentY") + flick.property("height") + 0.5, (bottom, flick.property("contentY"))
+        assert r.y() >= flick.property("contentY") - 0.5
+    assert flick.property("contentHeight") > flick.property("height")  # it really had to scroll
+    win.close()
+    assert qml_messages == []
+
+
+def test_zooming_open_windows_causes_no_qml_warnings(ui, qml_messages):
+    from conftest import wait_until
+
+    ui.openChat("alice@example.org")
+    ui.openSettings()
+    ui.openContacts()
+    ui.openNotifications()
+    for step in (1, 1, 1, -1, 0, -1, -1, 0):
+        ui.zoom(step)
+        wait_until(lambda: False, 60)
+    assert qml_messages == []
