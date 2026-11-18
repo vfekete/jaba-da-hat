@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as Mat  // namespaced: a plain import would shadow the Jdh style's controls
 import QtQuick.Layouts
 
 // Contact management: add / remove / block, user groups, multi-selection, drag & drop grouping.
@@ -13,12 +13,12 @@ ApplicationWindow {
     minimumWidth: 360
     minimumHeight: 420
     title: qsTr("Contacts — %1").arg(app.appName)
-    Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    Mat.Material.theme: app.darkTheme ? Mat.Material.Dark : Mat.Material.Light
     font: app.uiFont
 
     Zoom { app: win.app }
-    Material.accent: Material.DeepOrange
-    Material.primary: "#c4451c"
+    Mat.Material.accent: Mat.Material.DeepOrange
+    Mat.Material.primary: "#c4451c"
 
     property var selected: ({})          // jid -> true
     readonly property int selectedCount: Object.keys(selected).length
@@ -45,7 +45,7 @@ ApplicationWindow {
     }
 
     header: ToolBar {
-        Material.foreground: "white"
+        Mat.Material.foreground: "white"
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 4
@@ -72,7 +72,7 @@ ApplicationWindow {
     }
 
     footer: ToolBar {
-        Material.background: win.Material.dialogColor
+        Mat.Material.background: win.Mat.Material.dialogColor
         height: 32
         RowLayout {
             anchors.fill: parent
@@ -138,7 +138,7 @@ ApplicationWindow {
         width: proxyLabel.implicitWidth + 24
         height: 30
         radius: 15
-        color: Material.accent
+        color: Mat.Material.accent
         opacity: 0.9
         Drag.keys: ["jdh-contact"]
         Drag.hotSpot.x: 10
@@ -153,7 +153,7 @@ ApplicationWindow {
             required property string section
             width: ListView.view.width
             height: 30
-            color: drop.containsDrag ? Qt.alpha(win.Material.accent, 0.25) : win.Material.dialogColor
+            color: drop.containsDrag ? Qt.alpha(win.Mat.Material.accent, 0.25) : win.Mat.Material.dialogColor
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 x: 12
@@ -196,9 +196,9 @@ ApplicationWindow {
             Rectangle {
                 anchors.fill: parent
                 visible: !row.placeholder
-                color: row.zone === "onto" ? Qt.alpha(win.Material.accent, 0.30)
-                     : win.isSelected(row.jid) ? Qt.alpha(win.Material.accent, 0.16)
-                     : mouse.containsMouse ? Qt.alpha(win.Material.foreground, 0.05) : "transparent"
+                color: row.zone === "onto" ? Qt.alpha(win.Mat.Material.accent, 0.30)
+                     : win.isSelected(row.jid) ? Qt.alpha(win.Mat.Material.accent, 0.16)
+                     : mouse.containsMouse ? Qt.alpha(win.Mat.Material.foreground, 0.05) : "transparent"
             }
 
             Label {
@@ -323,8 +323,8 @@ ApplicationWindow {
                 height: 3
                 radius: 1.5
                 y: row.zone === "above" ? 0 : parent.height - height
-                color: win.Material.accent
-                Rectangle { width: 9; height: 9; radius: 4.5; y: -3; color: win.Material.accent }
+                color: win.Mat.Material.accent
+                Rectangle { width: 9; height: 9; radius: 4.5; y: -3; color: win.Mat.Material.accent }
             }
 
             Menu {

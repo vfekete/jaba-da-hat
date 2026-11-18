@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as Mat  // namespaced: a plain import would shadow the Jdh style's controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
@@ -15,12 +15,12 @@ ApplicationWindow {
     minimumWidth: 340
     minimumHeight: 380
     title: session.name + " — " + app.appName
-    Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    Mat.Material.theme: app.darkTheme ? Mat.Material.Dark : Mat.Material.Light
     font: app.uiFont
 
     Zoom { app: win.app }
-    Material.accent: Material.DeepOrange
-    Material.primary: "#c4451c"
+    Mat.Material.accent: Mat.Material.DeepOrange
+    Mat.Material.primary: "#c4451c"
 
     readonly property color inBubble: app.darkTheme ? "#3a3a3d" : "#ececec"
     readonly property color outBubble: app.darkTheme ? "#6e3420" : "#ffd8c7"
@@ -43,7 +43,7 @@ ApplicationWindow {
     }
 
     header: ToolBar {
-        Material.foreground: "white"
+        Mat.Material.foreground: "white"
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 12
@@ -260,8 +260,8 @@ ApplicationWindow {
                             wrapMode: TextEdit.Wrap
                             readOnly: true
                             selectByMouse: true
-                            color: win.Material.foreground
-                            selectionColor: win.Material.accent
+                            color: win.Mat.Material.foreground
+                            selectionColor: win.Mat.Material.accent
                             font: app.messageFont
                             onLinkActivated: (link) => session.openLink(link)
                             HoverHandler { cursorShape: body.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor }
@@ -313,13 +313,13 @@ ApplicationWindow {
             visible: app.connectionState !== "online"
             horizontalAlignment: Text.AlignHCenter
             text: qsTr("You are offline — messages can't be sent.")
-            color: Material.color(Material.Red)
+            color: Mat.Material.color(Mat.Material.Red)
         }
 
         Pane {
             Layout.fillWidth: true
             padding: 8
-            Material.elevation: 2
+            Mat.Material.elevation: 2
             RowLayout {
                 anchors.fill: parent
                 spacing: 6

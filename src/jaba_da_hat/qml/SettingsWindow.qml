@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as Mat  // namespaced: a plain import would shadow the Jdh style's controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
@@ -14,12 +14,12 @@ ApplicationWindow {
     minimumWidth: 420
     minimumHeight: 480
     title: qsTr("Settings — %1").arg(app.appName)
-    Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    Mat.Material.theme: app.darkTheme ? Mat.Material.Dark : Mat.Material.Light
     font: app.uiFont
 
     Zoom { app: win.app }
-    Material.accent: Material.DeepOrange
-    Material.primary: "#c4451c"
+    Mat.Material.accent: Mat.Material.DeepOrange
+    Mat.Material.primary: "#c4451c"
 
     function reload() { s = app.settingsMap() }
     onVisibleChanged: if (visible) reload()
@@ -94,13 +94,13 @@ ApplicationWindow {
                 Label { text: qsTr("Resource") }
                 TextField { id: resource; Layout.fillWidth: true; text: win.s.resource || "jaba-da-hat" }
                 Item { width: 1; height: 1 }
-                CheckBox { id: requireTls; text: qsTr("Require encrypted connection (TLS)"); checked: win.s.require_tls !== false }
+                CheckBox { id: requireTls; Layout.fillWidth: true; text: qsTr("Require encrypted connection (TLS)"); checked: win.s.require_tls !== false }
                 Item { width: 1; height: 1 }
-                CheckBox { id: useEncryption; text: qsTr("Use end-to-end encryption (OMEMO) by default"); checked: win.s.use_encryption !== false }
+                CheckBox { id: useEncryption; Layout.fillWidth: true; text: qsTr("Use end-to-end encryption (OMEMO) by default"); checked: win.s.use_encryption !== false }
                 Item { width: 1; height: 1 }
-                CheckBox { id: autoLogin; text: qsTr("Log in automatically on start"); checked: win.s.auto_login !== false }
+                CheckBox { id: autoLogin; Layout.fillWidth: true; text: qsTr("Log in automatically on start"); checked: win.s.auto_login !== false }
                 Item { width: 1; height: 1 }
-                CheckBox { id: autoReconnect; text: qsTr("Reconnect automatically when the connection drops"); checked: win.s.auto_reconnect !== false }
+                CheckBox { id: autoReconnect; Layout.fillWidth: true; text: qsTr("Reconnect automatically when the connection drops"); checked: win.s.auto_reconnect !== false }
                 Label {
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
@@ -122,7 +122,8 @@ ApplicationWindow {
                 Label { text: qsTr("Theme") ; font.bold: true }
                 ComboBox {
                     id: theme
-                    Layout.preferredWidth: 260
+                    Layout.fillWidth: true
+                Layout.maximumWidth: Math.round(260 * app.uiScale)
                     model: [qsTr("Follow system"), qsTr("Light"), qsTr("Dark")]
                     currentIndex: Math.max(0, ["system", "light", "dark"].indexOf(win.s.theme || "system"))
                 }
@@ -133,7 +134,8 @@ ApplicationWindow {
                 Label { text: qsTr("Notifications"); font.bold: true; Layout.topMargin: 12 }
                 ComboBox {
                     id: notifStyle
-                    Layout.preferredWidth: 260
+                    Layout.fillWidth: true
+                Layout.maximumWidth: Math.round(260 * app.uiScale)
                     model: [qsTr("Own toast (top right)"), qsTr("GNOME notification"), qsTr("Both")]
                     currentIndex: Math.max(0, ["toast", "gnome", "both"].indexOf(win.s.notification_style || "toast"))
                 }
@@ -175,8 +177,8 @@ ApplicationWindow {
             ColumnLayout {
                 width: parent.width
                 spacing: 4
-                CheckBox { id: sendTyping; text: qsTr("Let contacts see when I am typing"); checked: win.s.send_typing !== false }
-                CheckBox { id: showTyping; text: qsTr("Show when contacts are typing"); checked: win.s.show_typing !== false }
+                CheckBox { id: sendTyping; Layout.fillWidth: true; text: qsTr("Let contacts see when I am typing"); checked: win.s.send_typing !== false }
+                CheckBox { id: showTyping; Layout.fillWidth: true; text: qsTr("Show when contacts are typing"); checked: win.s.show_typing !== false }
                 Label {
                     text: qsTr("Typing notifications use XEP-0085 chat states. Conversations are kept in memory only while their window is open and are never written to disk. Pictures and files are never downloaded automatically.")
                     wrapMode: Text.Wrap; Layout.fillWidth: true; opacity: 0.65; font.pixelSize: Math.round(12 * app.uiScale); Layout.topMargin: 8
@@ -190,7 +192,7 @@ ApplicationWindow {
             ColumnLayout {
                 width: parent.width
                 spacing: 8
-                CheckBox { id: startAtLogin; text: qsTr("Start when I log in to GNOME"); checked: win.s.start_at_login === true }
+                CheckBox { id: startAtLogin; Layout.fillWidth: true; text: qsTr("Start when I log in to GNOME"); checked: win.s.start_at_login === true }
                 Label { text: qsTr("Download folder"); font.bold: true; Layout.topMargin: 8 }
                 RowLayout {
                     Layout.fillWidth: true

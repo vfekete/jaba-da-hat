@@ -13,7 +13,6 @@ from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from jaba_da_hat import config
@@ -39,7 +38,9 @@ def grab(win, name: str) -> None:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    QQuickStyle.setStyle("Material")
+    from jaba_da_hat.core import use_style
+
+    use_style()
     app = QApplication(sys.argv[:1])
     app.setFont(QGuiApplication.font())
     tmp = Path(tempfile.mkdtemp())

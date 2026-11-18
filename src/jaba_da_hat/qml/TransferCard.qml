@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as Mat  // namespaced: a plain import would shadow the Jdh style's controls
 import QtQuick.Layouts
 
 // One file transfer inside a chat. Incoming files are never fetched until "Download" is pressed.
@@ -10,7 +10,7 @@ Pane {
     required property var session
     property real uiScale: 1  // follows the interface font / zoom of the window
     padding: 10
-    Material.elevation: 1
+    Mat.Material.elevation: 1
 
     readonly property string st: transfer?.state ?? ""
     // the Transfer can be destroyed just before this delegate during teardown, hence the ?. below

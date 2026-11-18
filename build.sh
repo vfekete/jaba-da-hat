@@ -85,6 +85,9 @@ for old in build/"$APP"-*; do
 done
 
 # 6. smoke test: the binary must at least report its version
-"./$OUT" --version
+# in a throw-away cache: a running copy of the same version keeps its unpacked files busy in ~/.cache
+SMOKE_CACHE=$(mktemp -d)
+XDG_CACHE_HOME="$SMOKE_CACHE" "./$OUT" --version
+rm -rf "$SMOKE_CACHE"
 echo "done: $OUT  ($(du -h "$OUT" | cut -f1))"
 echo "install launcher + icon for your user with:  ./$OUT --register"

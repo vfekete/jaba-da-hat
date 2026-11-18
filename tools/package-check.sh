@@ -59,6 +59,8 @@ check "settings dir is private (0700)" '[[ "$(stat -c %a "$H/.config/jaba-da-hat
 check "settings file is private (0600)" '[[ "$(stat -c %a "$H/.config/jaba-da-hat/config.json")" == 600 ]]'
 check "unpacked into ~/.cache/jaba-da-hat/$VERSION" '[[ -d "$H/.cache/jaba-da-hat/$VERSION" ]]'
 check "no Python traceback in the log" '! grep -q Traceback "$T/run.log"'
+WAIT=5 start_stop --open settings  # loads QML windows: a style or file missing from the binary shows up here
+check "QML windows load (no QML errors)" '! grep -qE "ERROR jaba_da_hat.core|Component is not ready|\\.qml:[0-9]+:[0-9]+: .*(not installed|is not a type|Non-existent)" "$T/run.log"'
 
 echo "3. start at login (as the session would run it)"
 WAIT=4 start_stop --autostart; rc=$?

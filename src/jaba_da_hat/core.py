@@ -22,6 +22,15 @@ RECONNECT_DELAYS_S = (3, 10, 30, 60, 120, 300)  # then stays at the last value
 DEFAULT_FONT_PT = 10.5  # the size the windows were designed at (14 px at 96 dpi); "default" in Settings
 ZOOM_STEP = 1.1
 QML_DIR = Path(__file__).resolve().parent / "qml"
+STYLE = "Jdh"  # qml/Jdh: Material with font-proportional control heights — see docs/comments-details.md [26]
+
+
+def use_style() -> None:
+    """Select the app's Qt Quick Controls style; call before the first QML window is created."""
+    from PySide6.QtQuickControls2 import QQuickStyle
+
+    QQuickStyle.setStyle(STYLE)
+    QQuickStyle.setFallbackStyle("Material")
 
 
 class AppController(QObject):
@@ -531,6 +540,8 @@ class AppController(QObject):
     def _create_window(self, qml: str, props: dict) -> QObject | None:
         if self.engine is None:
             return None
+        if str(QML_DIR) not in self.engine.importPathList():
+            self.engine.addImportPath(str(QML_DIR))  # where the Jdh style lives
         comp = self._components.get(qml)
         if comp is None:
             comp = self._components[qml] = QQmlComponent(self.engine, QUrl.fromLocalFile(str(QML_DIR / qml)))

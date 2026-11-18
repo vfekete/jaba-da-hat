@@ -279,3 +279,41 @@ def test_zooming_open_windows_causes_no_qml_warnings(ui, qml_messages):
         ui.zoom(step)
         wait_until(lambda: False, 60)
     assert qml_messages == []
+
+
+@pytest.mark.parametrize("zoom", [0, 4])
+def test_settings_fit_at_minimum_width(ui, qml_messages, zoom):
+    from conftest import wait_until
+
+    ui.settings.zoom = zoom
+    ui.fontsChanged.emit()
+    ui.openSettings()
+    sw = ui._singletons["settings"]
+    sw.setProperty("width", sw.property("minimumWidth"))
+    for tab in range(4):
+        sw.property("header").setProperty("currentIndex", tab)
+        wait_until(lambda: False, 150)
+        controls = ("TextField", "ComboBox", "Button", "ToolButton", "CheckBox", "SpinBox", "Label")  # not shadows
+        cut = [it.metaObject().className() for it in _items(sw)
+               if it.metaObject().className().split("_")[0] in controls and it.property("visible") and it.width() > 0
+               and it.mapToItem(sw.contentItem(), it.width(), 0).x() > sw.property("width") + 0.5]
+        assert cut == [], (tab, cut)  # e.g. the password's 👁 button used to be pushed off
+    assert qml_messages == []
+
+
+def test_control_heights_follow_the_font(ui, qml_messages):
+    from conftest import wait_until
+
+    ui.openSettings()
+    sw = ui._singletons["settings"]
+
+    def field_height():
+        wait_until(lambda: False, 150)
+        return next(it.height() for it in _items(sw) if it.metaObject().className().startswith("TextField"))
+
+    h100 = field_height()
+    ui.zoom(1), ui.zoom(1), ui.zoom(1), ui.zoom(1), ui.zoom(1)  # 161 %
+    h161 = field_height()
+    assert h100 < 48  # not Material's fixed 56 px
+    assert 1.45 < h161 / h100 < 1.75  # grows with the text
+    assert qml_messages == []

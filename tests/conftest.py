@@ -17,10 +17,11 @@ def isolated_home(tmp_path, monkeypatch):
 
 @pytest.fixture(scope="session")
 def qapp():
-    from PySide6.QtQuickControls2 import QQuickStyle
     from PySide6.QtWidgets import QApplication
 
-    QQuickStyle.setStyle("Material")
+    from jaba_da_hat.core import use_style
+
+    use_style()
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setQuitOnLastWindowClosed(False)
     yield app

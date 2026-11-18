@@ -463,6 +463,41 @@ window becomes active (unless a dialog is open); header buttons and Send no
 longer take focus; and a printable key pressed while something else has focus
 (e.g. after selecting text in a bubble) is inserted into the input.
 
+## src/jaba_da_hat/qml/Jdh/
+
+### [26] The Jdh style: Material with control heights that follow the font
+
+Material is designed for touch: a text field or combo box is at least 56 px
+tall, a button 48 px, a check box has 15 px padding above and below — fixed
+pixels, whatever the font. With desktop text (14 px) the controls looked
+twice too tall, and zoom made the text bigger without changing those minimums
+(only the text grew). Material's Dense variant only lowers the fixed numbers.
+
+`qml/Jdh` is a tiny Qt Quick Controls style selected in `core.use_style()`,
+with Material as the fallback for everything it doesn't define. It overrides
+only TextField, ComboBox, SpinBox (2.3 × the font's line height), Button
+(1.9 × plus Material's shadow insets) and CheckBox (1.9 ×, padding 0.35 ×
+line height), measured with `FontMetrics` of the control's own font — so the
+heights follow the interface font and zoom exactly.
+
+Two traps found on the way:
+- A window must import Material **with a namespace**
+  (`import QtQuick.Controls.Material as Mat`, then `Mat.Material.accent`). A
+  plain `import QtQuick.Controls.Material` provides Material's own
+  `TextField`, `Button`, … to the file and silently shadows the style's
+  controls, whatever the import order.
+- The style's qmldir must not `import QtQuick.Controls.Material auto`: the
+  imported Material types (version 6.x) win over the style's own. The
+  fallback is set with `QQuickStyle.setFallbackStyle("Material")` instead.
+
+The check box label wraps (`WordWrap`) and Settings check boxes use
+`Layout.fillWidth`: a Qt Quick layout gives an item without `fillWidth` a fixed
+width equal to its implicit width, so the longest label ("Reconnect
+automatically when the connection drops") made the Account grid wider than the
+window at its minimum width and pushed the password's 👁 button off the edge.
+Drop-downs in Settings likewise take their preferred width only as a maximum.
+A test checks every Settings tab at the minimum width, at 100 % and 146 % zoom.
+
 ## src/jaba_da_hat/main.py
 
 ### [18] slixmpp is never logged at DEBUG

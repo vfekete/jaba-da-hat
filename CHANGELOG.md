@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-11-18
+
+### Changed
+- Text fields, drop-downs, buttons and check boxes are sized from the font instead of Material's
+  fixed touch-size heights (a text field: ~40 px instead of 56 px at normal size), and grow and
+  shrink with the interface font and zoom.
+
+### Fixed
+- Settings at narrow widths: the Account page was wider than the window, cutting off the fields'
+  right edge and hiding the password's 👁 button; long check box labels now wrap and drop-downs
+  shrink, so every page fits at the minimum width (also when zoomed in).
+- `build.sh` failed at its final smoke test while the same version was running (the running copy
+  keeps its unpacked files busy); the smoke test now unpacks into a throw-away cache.
+- `tools/package-check.sh` also opens a QML window from the binary and fails on QML errors, so a
+  style or QML file missing from the package is caught.
+
 ## [1.1.0] — 2026-11-18
 
 ### Added

@@ -1,0 +1,6 @@
+module Jdh
+TextField 6.0 TextField.qml
+ComboBox 6.0 ComboBox.qml
+Button 6.0 Button.qml
+CheckBox 6.0 CheckBox.qml
+SpinBox 6.0 SpinBox.qml

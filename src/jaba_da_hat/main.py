@@ -101,7 +101,6 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtCore import QLoggingCategory, Qt, QTimer
     from PySide6.QtGui import QGuiApplication, QIcon
     from PySide6.QtQml import QQmlApplicationEngine
-    from PySide6.QtQuickControls2 import QQuickStyle
     from PySide6.QtWidgets import QApplication
 
     from jaba_da_hat import config
@@ -113,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     # Harmless Qt Wayland text-input chatter on every focus change.
     QLoggingCategory.setFilterRules("qt.qpa.wayland.textinput=false")
     QGuiApplication.setDesktopFileName(APP_ID)
-    QQuickStyle.setStyle("Material")
+    from jaba_da_hat.core import use_style
+
+    use_style()
     qapp = QApplication(sys.argv[:1])
     qapp.setApplicationName(APP_ID)
     qapp.setApplicationDisplayName(APP_NAME)

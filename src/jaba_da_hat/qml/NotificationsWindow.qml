@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as Mat  // namespaced: a plain import would shadow the Jdh style's controls
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -12,15 +12,15 @@ ApplicationWindow {
     minimumWidth: 360
     minimumHeight: 300
     title: qsTr("Notifications — %1").arg(app.appName)
-    Material.theme: app.darkTheme ? Material.Dark : Material.Light
+    Mat.Material.theme: app.darkTheme ? Mat.Material.Dark : Mat.Material.Light
     font: app.uiFont
 
     Zoom { app: win.app }
-    Material.accent: Material.DeepOrange
-    Material.primary: "#c4451c"
+    Mat.Material.accent: Mat.Material.DeepOrange
+    Mat.Material.primary: "#c4451c"
 
     header: ToolBar {
-        Material.foreground: "white"
+        Mat.Material.foreground: "white"
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 12
@@ -52,7 +52,7 @@ ApplicationWindow {
             required property string text
             required property string time
             width: ListView.view.width
-            Material.elevation: 1
+            Mat.Material.elevation: 1
             ColumnLayout {
                 anchors.fill: parent
                 RowLayout {
@@ -60,7 +60,7 @@ ApplicationWindow {
                         text: item.kind === "subscription" ? qsTr("Authorization request")
                             : item.kind === "error" ? qsTr("Problem") : qsTr("Information")
                         font.bold: true
-                        color: item.kind === "error" ? Material.color(Material.Red) : Material.foreground
+                        color: item.kind === "error" ? Mat.Material.color(Mat.Material.Red) : Mat.Material.foreground
                         Layout.fillWidth: true
                     }
                     Label { text: item.time; opacity: 0.6; font.pixelSize: Math.round(12 * app.uiScale) }
